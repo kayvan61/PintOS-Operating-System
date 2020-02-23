@@ -19,7 +19,8 @@
 #include "threads/vaddr.h"
 
 #define LOGGING_LEVEL 6
-
+#define MAX_ARGS      50
+#define MAX_ARG_LEN   20
 #include <log.h>
 
 static thread_func start_process NO_RETURN;
@@ -50,6 +51,7 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   return tid;
@@ -100,6 +102,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
+    while(1);
   return -1;
 }
 
@@ -207,7 +210,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, char*);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -227,7 +230,19 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  char progName[64];
 
+  // get the program name from the arg list
+  int indexOfNewNull = 0;
+  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0'){
+      progName[indexOfNewNull] = file_name[indexOfNewNull];
+      indexOfNewNull++;
+      if(file_name[indexOfNewNull] == ' ') { break; }
+      if(file_name[indexOfNewNull] == '\0') { indexOfNewNull = -1; break; }
+  }
+  progName[indexOfNewNull] = '\0';
+
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL)
@@ -235,13 +250,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (progName);
   if (file == NULL)
     {
       printf ("load: %s: open failed\n", file_name);
       goto done;
     }
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -315,7 +330,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, file_name))
     goto done;
 
   /* Start address. */
@@ -442,10 +457,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp)
+setup_stack (void **esp, char* f_name)
 {
-  uint8_t *kpage;
-  bool success = false;
+  uint8_t* kpage;
+  bool     success = false;
+
+  // added for argument passing  
+  int32_t argc = 0;
+  char*   currentToken;
+  char*   saveptr;
+  
+  int     sizeOfCurArg;
+  char    argv[MAX_ARGS][MAX_ARG_LEN];
+  char*   pushedArgs[MAX_ARGS];
+  void**  argvLocation;
 
   log(L_TRACE, "setup_stack()");
 
@@ -454,8 +479,48 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success) {
-        *esp = PHYS_BASE;
-	  }
+          for (currentToken = strtok_r (f_name, " ", &saveptr); currentToken != NULL;
+               currentToken = strtok_r (NULL, " ", &saveptr)) {
+              strlcpy(argv[argc], currentToken, MAX_ARG_LEN);
+              argc++;
+          }
+          
+          *esp = PHYS_BASE;
+
+          // copy the arguments into the stack 
+          
+          for(int i = argc-1; i >= 0; i--) {
+              sizeOfCurArg = strlen(argv[i]);
+              *esp = *esp - (sizeOfCurArg + 1);
+
+              strlcpy(*esp, argv[i], sizeOfCurArg+1);
+              pushedArgs[i] = *esp;              
+          }
+          
+          // align
+          if((((unsigned long)*esp) % 4) != 0) {
+              *esp -= 4 - ((unsigned long)*esp % 4);              
+          }
+          
+          // populate argv with the pointers
+          *esp -= 4;
+          *(int32_t*)*esp = 0;
+          for(int i = argc-1; i >= 0 ; i--) {
+              *esp -= 4;
+              *(int32_t*)*esp = pushedArgs[i];
+          }
+          argvLocation = *esp;
+          
+          // put argv and argc and return addr on the stack
+          *esp -= 4;
+          *(char**)*esp = argvLocation;
+          *esp -= 4;
+          *((int32_t*)(*esp)) = argc;
+          *esp -= 4;
+          *(int32_t*)*esp = 0;
+          
+          hex_dump(*(int*)esp, *esp, PHYS_BASE - (*esp), true);
+      }
       else {
         palloc_free_page (kpage);
 	  }
