@@ -2,7 +2,7 @@
 
 # Path to GDB macros file.  Customize for your site.
 ###--- Change the path to point to your gdb-macros file ---###
-GDBMACROS_DEFAULT=./gdb-macros
+GDBMACROS_DEFAULT=$PINTOS/utils/gdb-macros
 
 if [ -z $GDBMACROS ]; then
     echo "!!! WARNING: GDBMACROS NOT SET. !!!"
