@@ -499,7 +499,7 @@ setup_stack (void **esp, char* f_name)
           
           // align
           if((((unsigned long)*esp) % 4) != 0) {
-              *esp -= 4 - ((unsigned long)*esp % 4);              
+              *esp -= ((unsigned long)*esp % 4);              
           }
           
           // populate argv with the pointers
