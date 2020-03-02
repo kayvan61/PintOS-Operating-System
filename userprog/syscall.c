@@ -21,7 +21,8 @@ syscall_handler (struct intr_frame *f)
 {
   int32_t statusCode = *(int32_t *)(f->esp);
   int32_t* argv = f->esp;
-  argv += 1;  
+  argv += 1;
+  int return_val = -1;
   
   switch(statusCode) {
   case SYS_HALT:
@@ -32,6 +33,8 @@ syscall_handler (struct intr_frame *f)
   case SYS_EXEC:
     break;
   case SYS_WAIT:
+    return_val = wait(*(argv+1));
+    f->eax = return_val;
     break;
   case SYS_CREATE:
     break;
@@ -45,7 +48,8 @@ syscall_handler (struct intr_frame *f)
     break;
   case SYS_WRITE:    
     validate_ptr(*(argv+1), *(argv+2));
-    write(*argv, *(argv+1), *(argv+2));
+    return_val = write(*argv, *(argv+1), *(argv+2));
+    f->eax = return_val;
     break;
   case SYS_SEEK:
     break;
@@ -183,7 +187,7 @@ tid_t exec (const char *cmd_line) {
 */
 
 int wait (tid_t pid) {
-
+  return process_wait(pid);
 }
 
 /* System Call: bool create (const char *file, unsigned initial_size)

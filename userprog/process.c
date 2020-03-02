@@ -4,6 +4,7 @@
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "threads/malloc.h"
 #include <string.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
@@ -92,8 +93,9 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success)
+  if (!success) {
     thread_exit ();
+  }
   else {
     sema_up(&thread_current()->parent->waitingLock);
   }
@@ -135,8 +137,8 @@ process_wait (tid_t child_tid)
 	  }
 	  int ret = f->returnCode;
 	  list_remove(curChild);
-	  free(f);	    
-	  return ret;	  
+	  free(f);
+	  return ret;
 	}
     }
   

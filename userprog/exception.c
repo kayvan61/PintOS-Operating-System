@@ -80,6 +80,19 @@ kill (struct intr_frame *f)
      exceptions back to the process via signals, but we don't
      implement them. */
 
+  // let the parent know that we got killed
+  struct list_elem* curChild;
+  struct child_return_info *chld;
+  for (curChild = list_begin (&thread_current()->parent->children); curChild != list_end (&thread_current()->parent->children);
+           curChild = list_next (curChild))
+    {
+      chld = list_entry (curChild, struct child_return_info, elem);
+      if(chld->tid == thread_current()->tid)
+	{
+	  break;
+	}
+    }
+  
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
   switch (f->cs)
@@ -89,6 +102,8 @@ kill (struct intr_frame *f)
          expected.  Kill the user process.  */
       printf ("%s: dying due to interrupt %#04x (%s).\n",
               thread_name (), f->vec_no, intr_name (f->vec_no));
+      chld->hasBeenChecked = true;
+      chld->returnCode = -1;
       intr_dump_frame (f);
       thread_exit ();
 
@@ -105,6 +120,8 @@ kill (struct intr_frame *f)
          kernel. */
       printf ("Interrupt %#04x (%s) in unknown segment %04x\n",
              f->vec_no, intr_name (f->vec_no), f->cs);
+      chld->hasBeenChecked = true;
+      chld->returnCode = -1;
       thread_exit ();
     }
 }
