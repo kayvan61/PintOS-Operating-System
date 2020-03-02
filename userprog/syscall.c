@@ -8,6 +8,7 @@
 #include "lib/syscall-nr.h"
 
 static void syscall_handler (struct intr_frame *);
+static bool validate_ptr(void* ptr, int spanSize);
 
 void
 syscall_init (void)
@@ -20,7 +21,7 @@ syscall_handler (struct intr_frame *f)
 {
   int32_t statusCode = *(int32_t *)(f->esp);
   int32_t* argv = f->esp;
-  argv += 1;
+  argv += 1;  
   
   switch(statusCode) {
   case SYS_HALT:
@@ -42,7 +43,9 @@ syscall_handler (struct intr_frame *f)
     break;
   case SYS_READ:
     break;
-  case SYS_WRITE:
+  case SYS_WRITE:    
+    validate_ptr(*(argv+1), *(argv+2));
+    write(*argv, *(argv+1), *(argv+2));
     break;
   case SYS_SEEK:
     break;
@@ -79,48 +82,27 @@ put_user (uint8_t *udst, uint8_t byte)
 }
 
 static bool
-validate_ptr(void* ptr, int spanSize, bool is_usr, bool is_write) {
+validate_ptr(void* ptr, int spanSize) {
   
-  if(ptr <= PHYS_BASE && is_usr) {
+  if(ptr >= PHYS_BASE) {
     exit(-1);
   }
 
-  // validate ptr for writing 
-  if(is_write) {
-    if(put_user(ptr, 0x0A)) {
-      // the write was valid
-      if(put_user((uint8_t*)ptr + spanSize, 0x0A)){
-	// both ends are fine maybe leave it
-	// if a test case fails implement linear buffer check?
-	return true;
-      }
-      else {
-	// invalid write
-	exit(-1);
-      }
-    }
-    else {
-      exit(-1);
-    }
-  }
-  // validate ptr for reading
-  else {
-    if(get_user(ptr) != -1) {
-      // the read was valid
-      if(get_user((uint8_t*)ptr + spanSize) != -1){
-	// both ends are fine maybe leave it
-	// if a test case fails implement linear buffer check?
-	return true;
-      }
-      else {
-	// invalid read
-	exit(-1);
-      }
+  if(get_user(ptr) != -1) {
+    // the read was valid
+    if(get_user((uint8_t*)(ptr + spanSize)) != -1){
+      // both ends are fine maybe leave it
+      // if a test case fails implement linear buffer check?
+      return true;
     }
     else {
       // invalid read
       exit(-1);
     }
+  }
+  else {
+    // invalid read
+    exit(-1);
   }
 }
 
@@ -265,7 +247,10 @@ int read (int fd, void *buffer, unsigned size) {
    (It is reasonable to break up larger buffers.) Otherwise, lines of text output by different processes may end up interleaved on the console, confusing both human readers and our grading scripts. */
 
 int write (int fd, const void *buffer, unsigned size) {
-
+  if(fd == 1) {
+    putbuf(buffer, size);
+    return size;
+  }
 }
 
 /*System Call: void seek (int fd, unsigned position)

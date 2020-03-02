@@ -50,7 +50,20 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  
+  char progName[16];
+
+  // get the program name from the arg list
+  int indexOfNewNull = 0;
+  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull < 15){
+      progName[indexOfNewNull] = file_name[indexOfNewNull];
+      if(file_name[indexOfNewNull] == ' ') { break; }
+      if(file_name[indexOfNewNull] == '\0') { indexOfNewNull = -1; break; }
+      indexOfNewNull++;
+  }
+  progName[indexOfNewNull] = '\0';
+  
+  tid = thread_create (progName, PRI_DEFAULT, start_process, fn_copy);
 
   sema_down(&thread_current()->waitingLock);
   
@@ -253,16 +266,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
-  int i;
-  char progName[64];
+  int i;  
+  char progName[16];
 
   // get the program name from the arg list
   int indexOfNewNull = 0;
-  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0'){
+  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull < 15){
       progName[indexOfNewNull] = file_name[indexOfNewNull];
-      indexOfNewNull++;
       if(file_name[indexOfNewNull] == ' ') { break; }
       if(file_name[indexOfNewNull] == '\0') { indexOfNewNull = -1; break; }
+      indexOfNewNull++;
   }
   progName[indexOfNewNull] = '\0';
 
@@ -279,7 +292,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     {
       printf ("load: %s: open failed\n", file_name);
       goto done;
-    }
+    }  
   
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
