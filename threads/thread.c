@@ -581,7 +581,25 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+/* finds if there is a thread with tid val in the all_list */
+struct thread* thread_get_thread_by_tid(tid_t requested_tid) {
+  struct list_elem *e;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if(t->tid == requested_tid) {
+	return t;
+      }
+    }
+  return NULL;
+}
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);

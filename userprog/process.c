@@ -100,9 +100,15 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED)
+process_wait (tid_t child_tid)
 {
-    while(1);
+  intr_set_level(INTR_OFF);
+  struct thread* waitingProc = thread_get_thread_by_tid(child_tid);
+  intr_set_level(INTR_ON);
+  if(waitingProc == NULL) {
+    return -1;
+  }
+  while(1);
   return -1;
 }
 
