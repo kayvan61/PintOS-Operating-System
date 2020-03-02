@@ -100,6 +100,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->parent = NULL;
+  list_init (&initial_thread->children);
+  sema_init(&initial_thread->waitingLock, 0);
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -173,6 +176,7 @@ thread_create (const char *name, int priority,
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
+  struct child_return_info *childRet;
   tid_t tid;
 
   ASSERT (function != NULL);
@@ -200,6 +204,14 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  childRet = malloc(sizeof(*childRet));
+  childRet->hasBeenChecked = false;
+  childRet->tid = tid;  
+  list_push_back(&thread_current()->children, &childRet->elem);
+  t->parent = thread_current();
+  list_init (&t->children);
+  sema_init(&t->waitingLock, 0);
 
   /* Add to run queue. */
   thread_unblock (t);

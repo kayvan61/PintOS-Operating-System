@@ -16,19 +16,17 @@ syscall_init (void)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED)
+syscall_handler (struct intr_frame *f)
 {
   int32_t statusCode = *(int32_t *)(f->esp);
-  void *arg1, *arg2, *arg3;
-  
-  arg1 = ((char*)f->esp)+4;
-  arg2 = ((char*)f->esp)+8;
-  arg3 = ((char*)f->esp)+12;
+  int32_t* argv = f->esp;
+  argv += 1;
   
   switch(statusCode) {
   case SYS_HALT:
     break;
   case SYS_EXIT:
+    exit(*argv);
     break;
   case SYS_EXEC:
     break;
@@ -139,7 +137,25 @@ void halt (void) {
     Conventionally, a status of 0 indicates success and nonzero values indicate errors. 
 */
 void exit(int status) {
+  printf("%s: exit(%d)\n", thread_current()->name, status);
+  thread_current()->returnCode = status;
   
+  struct list_elem* curChild;
+  for (curChild = list_begin (&thread_current()->parent->children); curChild != list_end (&thread_current()->parent->children);
+           curChild = list_next (curChild))
+    {
+      struct child_return_info *f = list_entry (curChild, struct child_return_info, elem);
+      if(f->tid == thread_current()->tid)
+	{
+	  f->hasBeenChecked = true;
+	  f->returnCode = status;
+	}
+    }
+  
+  if(thread_current()->parent->waitingOnTid == thread_current()->tid) {
+    sema_up(&thread_current()->parent->waitingLock);
+  }
+  thread_exit();
 }
 
 /*  System Call: tid_t exec (const char *cmd_line)

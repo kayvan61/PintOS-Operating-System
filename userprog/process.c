@@ -51,6 +51,8 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+
+  sema_down(&thread_current()->waitingLock);
   
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -79,6 +81,9 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success)
     thread_exit ();
+  else {
+    sema_up(&thread_current()->parent->waitingLock);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -102,13 +107,26 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid)
 {
-  intr_set_level(INTR_OFF);
-  struct thread* waitingProc = thread_get_thread_by_tid(child_tid);
-  intr_set_level(INTR_ON);
-  if(waitingProc == NULL) {
-    return -1;
-  }
-  while(1);
+  struct thread* p = thread_current();
+  thread_current()->waitingOnTid = child_tid;
+  
+  struct list_elem* curChild;
+  for (curChild = list_begin (&thread_current()->children); curChild != list_end (&thread_current()->children);
+           curChild = list_next (curChild))
+    {
+      struct child_return_info *f = list_entry (curChild, struct child_return_info, elem);
+      if(f->tid == child_tid)
+	{
+	  if(!f->hasBeenChecked) {
+	    sema_down(&thread_current()->waitingLock);	    
+	  }
+	  int ret = f->returnCode;
+	  list_remove(curChild);
+	  free(f);	    
+	  return ret;	  
+	}
+    }
+  
   return -1;
 }
 
@@ -523,9 +541,7 @@ setup_stack (void **esp, char* f_name)
           *esp -= 4;
           *((int32_t*)(*esp)) = argc;
           *esp -= 4;
-          *(int32_t*)*esp = 0;
-          
-          hex_dump(*(int*)esp, *esp, PHYS_BASE - (*esp), true);
+          *(int32_t*)*esp = 0;                    
       }
       else {
         palloc_free_page (kpage);
