@@ -1,19 +1,25 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "threads/synch.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/init.h"
 #include "lib/syscall-nr.h"
+#include "userprog/process.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_ptr(void* ptr, int spanSize);
+
+static struct lock file_system_lock; 
 
 void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&file_system_lock);
 }
 
 static void
@@ -47,8 +53,8 @@ syscall_handler (struct intr_frame *f)
   case SYS_READ:
     break;
   case SYS_WRITE:    
-    validate_ptr(*(argv+1), *(argv+2));
-    return_val = write(*argv, *(argv+1), *(argv+2));
+    validate_ptr((void *)*(argv+1), *(argv+2));
+    return_val = write(*argv, (void *)*(argv+1), *(argv+2));
     f->eax = return_val;
     break;
   case SYS_SEEK:
@@ -102,6 +108,7 @@ validate_ptr(void* ptr, int spanSize) {
     else {
       // invalid read
       exit(-1);
+      put_user(ptr, 0x0a);
     }
   }
   else {
@@ -151,7 +158,7 @@ void exit(int status) {
     You must use appropriate synchronization to ensure this. 
 */
 tid_t exec (const char *cmd_line) {
-
+  return -1;
 }
 
 /*  System Call: int wait (tid_t pid)
@@ -196,7 +203,7 @@ int wait (tid_t pid) {
    Creating a new file does not open it: opening the new file is a separate operation which would require a open system call. */
 
 bool create (const char *file, unsigned initial_size) {
-
+  return false;
 }
 
 /* System Call: bool remove (const char *file)
@@ -206,7 +213,7 @@ bool create (const char *file, unsigned initial_size) {
 */
 
 bool remove (const char *file) {
-
+  return false;
 }
 
 /* System Call: int open (const char *file)
@@ -221,14 +228,14 @@ bool remove (const char *file) {
    Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position. */
 
 int open (const char *file) {
-
+  return -1;
 }
   
 /* System Call: int filesize (int fd)
    Returns the size, in bytes, of the file open as fd. */
 
 int filesize (int fd) {
-
+  return -1;
 }
   
 /* System Call: int read (int fd, void *buffer, unsigned size)
@@ -237,7 +244,7 @@ int filesize (int fd) {
    Fd 0 reads from the keyboard using input_getc(). */
 
 int read (int fd, void *buffer, unsigned size) {
-
+  return -1;
 }
 
 /* System Call: int write (int fd, const void *buffer, unsigned size)
@@ -255,6 +262,7 @@ int write (int fd, const void *buffer, unsigned size) {
     putbuf(buffer, size);
     return size;
   }
+  return -1;
 }
 
 /*System Call: void seek (int fd, unsigned position)
@@ -274,12 +282,12 @@ void seek (int fd, unsigned position) {
    Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file. */
 
 unsigned tell (int fd) {
-
+  return 0;
 }
 
 /*System Call: void close (int fd)
   Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one. */
 
 void close (int fd) {
-
+  
 }

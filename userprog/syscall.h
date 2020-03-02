@@ -12,11 +12,19 @@
 
 void syscall_init (void);
 
-static int get_user (const uint8_t *uaddr);
-static bool put_user (uint8_t *udst, uint8_t byte);
-
 void halt (void);
 void exit(int status);
+int wait (tid_t pid);
+int write (int fd, const void *buffer, unsigned size);
+tid_t exec (const char *cmd_line);
+bool create (const char *file, unsigned initial_size);
+bool remove (const char *file);
+int open (const char *file);
+int filesize (int fd);
+int read (int fd, void *buffer, unsigned size);
+void seek (int fd, unsigned position);
+unsigned tell (int fd);
+void close (int fd);
 
 
 #endif /* userprog/syscall.h */

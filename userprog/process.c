@@ -121,8 +121,7 @@ start_process (void *file_name_)
    does nothing. */
 int
 process_wait (tid_t child_tid)
-{
-  struct thread* p = thread_current();
+{ 
   thread_current()->waitingOnTid = child_tid;
   
   struct list_elem* curChild;
@@ -369,7 +368,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, file_name))
+  if (!setup_stack (esp, (char*)file_name))
     goto done;
 
   /* Start address. */
@@ -509,7 +508,7 @@ setup_stack (void **esp, char* f_name)
   int     sizeOfCurArg;
   char    argv[MAX_ARGS][MAX_ARG_LEN];
   char*   pushedArgs[MAX_ARGS];
-  void**  argvLocation;
+  char**  argvLocation;
 
   log(L_TRACE, "setup_stack()");
 
@@ -546,13 +545,13 @@ setup_stack (void **esp, char* f_name)
           *(int32_t*)*esp = 0;
           for(int i = argc-1; i >= 0 ; i--) {
               *esp -= 4;
-              *(int32_t*)*esp = pushedArgs[i];
+              *(char**)*esp = pushedArgs[i];
           }
           argvLocation = *esp;
           
           // put argv and argc and return addr on the stack
           *esp -= 4;
-          *(char**)*esp = argvLocation;
+          *(char***)*esp = argvLocation;
           *esp -= 4;
           *((int32_t*)(*esp)) = argc;
           *esp -= 4;
