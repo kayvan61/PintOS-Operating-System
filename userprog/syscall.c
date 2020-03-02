@@ -18,10 +18,6 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED)
 {
-  printf ("system call!\n");
-
-  printf ("%d %d\n", get_user(0xffffffff), put_user(0xffffffff, 0x0a));
-
   int32_t statusCode = *(int32_t *)(f->esp);
   void *arg1, *arg2, *arg3;
   

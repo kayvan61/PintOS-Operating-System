@@ -155,14 +155,7 @@ page_fault (struct intr_frame *f)
   if(!user) {
     f->eip = f->eax;
     f->eax = 0xffffffff;
-    return;
-      //asm("movl $0xffffffff, %%eax;" : : : "eax");
-      //return;
-         /* push %[oldEax]; 
-         ret 
-	:
-	: [oldEax] "m" (f->eax), [oldEsp] "m" (f->esp), "g" (f)
-	: "eax", "memory");*/
+    return;    
   }
   
   /* To implement virtual memory, delete the rest of the function
