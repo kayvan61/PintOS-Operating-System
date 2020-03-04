@@ -9,6 +9,7 @@
 #include "lib/syscall-nr.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_ptr(void* ptr, int spanSize);
@@ -43,6 +44,9 @@ syscall_handler (struct intr_frame *f)
     f->eax = return_val;
     break;
   case SYS_CREATE:
+    validate_ptr(*argv, 1);
+    return_val = create(*argv, *(argv+1));
+    f->eax = return_val;
     break;
   case SYS_REMOVE:
     break;
@@ -211,7 +215,14 @@ int wait (tid_t pid) {
    Creating a new file does not open it: opening the new file is a separate operation which would require a open system call. */
 
 bool create (const char *file, unsigned initial_size) {
-  return false;
+
+  bool ret = false;
+  lock_acquire(&file_system_lock);
+
+  ret = filesys_create(file, initial_size);
+  
+  lock_release(&file_system_lock);
+  return ret;
 }
 
 /* System Call: bool remove (const char *file)
