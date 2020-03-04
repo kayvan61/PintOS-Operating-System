@@ -44,13 +44,19 @@ syscall_handler (struct intr_frame *f)
     f->eax = return_val;
     break;
   case SYS_CREATE:
-    validate_ptr(*argv, 1);
-    return_val = create(*argv, *(argv+1));
+    validate_ptr(*(void**)argv, 1);
+    return_val = create(*(char**)argv, *(argv+1));
     f->eax = return_val;
     break;
   case SYS_REMOVE:
+    validate_ptr(*(void**)argv, 1);
+    return_val = remove(*(char**)argv);
+    f->eax = return_val;
     break;
   case SYS_OPEN:
+    validate_ptr(*(void**)argv, 1);
+    return_val = open(*(char**)argv);
+    f->eax = return_val;
     break;
   case SYS_FILESIZE:
     break;
@@ -232,7 +238,14 @@ bool create (const char *file, unsigned initial_size) {
 */
 
 bool remove (const char *file) {
-  return false;
+
+  bool ret = false;
+  lock_acquire(&file_system_lock);
+
+  ret = filesys_remove(file);
+  
+  lock_release(&file_system_lock); 
+  return ret;
 }
 
 /* System Call: int open (const char *file)
@@ -247,7 +260,14 @@ bool remove (const char *file) {
    Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position. */
 
 int open (const char *file) {
-  return -1;
+  lock_acquire(&file_system_lock);
+  struct file* openedFile = filesys_open(file);
+  if(openedFile == NULL){
+    return -1;
+  }
+  int ret = thread_add_fd(openedFile);
+  lock_release(&file_system_lock); 
+  return ret + 2;
 }
   
 /* System Call: int filesize (int fd)
@@ -281,7 +301,23 @@ int write (int fd, const void *buffer, unsigned size) {
     putbuf(buffer, size);
     return size;
   }
-  return -1;
+  if(fd == 0) {
+    return -1;
+  }
+
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return -1;
+  }
+  
+  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  int ret = -1;
+  lock_acquire(&file_system_lock);
+  if(fileToWrite != NULL) {
+    ret = file_write (fileToWrite, buffer, size);
+  }
+  lock_release(&file_system_lock);
+  return ret;
 }
 
 /*System Call: void seek (int fd, unsigned position)

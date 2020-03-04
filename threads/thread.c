@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -102,6 +103,9 @@ thread_init (void)
   initial_thread->tid = allocate_tid ();
   initial_thread->parent = NULL;
   list_init (&initial_thread->children);
+
+  initial_thread->isFdInit = false;
+  
   sema_init(&initial_thread->waitingLock, 0);
 }
 
@@ -205,18 +209,76 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  /* push make child point correct location */
   childRet = malloc(sizeof(*childRet));
   childRet->hasBeenChecked = false;
-  childRet->tid = tid;  
+  childRet->tid = tid;
+  
   list_push_back(&thread_current()->children, &childRet->elem);
+  
   t->parent = thread_current();
+  
   list_init (&t->children);
   sema_init(&t->waitingLock, 0);
+
+  /* set up childs fdTable */
+  t->fdTable = malloc(sizeof(struct file*) * 1);
+  t->fdTable[0] = NULL;
+  t->fdCount = 0;
+  t->fdCap = 1;
 
   /* Add to run queue. */
   thread_unblock (t);
 
   return tid;
+}
+
+int thread_add_fd(struct file* newFilePtr) {
+  int ret = 0;
+  struct thread* t = thread_current();
+
+  if(!t->isFdInit) {
+    t->fdTable = malloc(sizeof(struct file*) * 1);
+    t->fdTable[0] = NULL;
+    t->fdCount = 0;
+    t->fdCap = 1;
+    t->isFdInit = true;
+  }
+
+  for(int i = 0; i < t->fdCap; i++) {
+    if(t->fdTable[i] == newFilePtr) {
+      return i;
+    }
+  }
+  
+  while(t->fdTable[ret] != NULL) {
+    ret++;
+    if(ret == t->fdCap - 1) {
+      break;
+    }
+  }
+  t->fdTable[ret] = newFilePtr;
+  t->fdCount++;
+  
+  if(t->fdCap == t->fdCount) {
+    int oldCap = t->fdCap;
+    t->fdCap *= 2;
+    t->fdTable = (struct thread**)realloc(t->fdTable, sizeof(struct thread*) * t->fdCap);
+    for(int i = oldCap; i < t->fdCap; i++) {
+      t->fdTable[i] = NULL;
+    }
+  }
+  return ret;
+}
+
+void thread_remove_fd(int fdToRemove) {
+  if(!thread_current()->isFdInit) {
+    return;
+  }
+  if(fdToRemove < thread_current()->fdCap) {
+    thread_current()->fdCount--;
+    thread_current()->fdTable[fdToRemove] = NULL;
+  }
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled

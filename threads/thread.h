@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "synch.h"
+#include "filesys/file.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -97,6 +98,11 @@ struct thread
 
     int returnCode;
 
+    bool isFdInit;
+    struct file **fdTable;
+    int fdCount;
+    int fdCap;
+
     struct list children;
     int waitingOnTid;
     struct semaphore waitingLock;
@@ -153,6 +159,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+int thread_add_fd(struct file*);
+void thread_remove_fd(int);
 
 struct thread* thread_get_thread_by_tid(tid_t);
 
