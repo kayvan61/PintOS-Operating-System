@@ -158,7 +158,15 @@ void exit(int status) {
     You must use appropriate synchronization to ensure this. 
 */
 tid_t exec (const char *cmd_line) {
-  return -1;
+  
+  ASSERT(cmd_line != NULL);
+  struct lock execLock;
+  tid_t pid = 1;
+  while(pid){
+    pid = process_execute(cmd_line);
+    if(pid == -1) break;
+  }
+  return pid;
 }
 
 /*  System Call: int wait (tid_t pid)
