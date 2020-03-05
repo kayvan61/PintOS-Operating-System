@@ -9,6 +9,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -18,6 +19,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+
 
 #define LOGGING_LEVEL 6
 #define MAX_ARGS      50
@@ -65,8 +67,6 @@ process_execute (const char *file_name)
   progName[indexOfNewNull] = '\0';
   
   tid = thread_create (progName, PRI_DEFAULT, start_process, fn_copy);
-
-  sema_down(&thread_current()->waitingLock);
   
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
@@ -95,14 +95,12 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) {
     thread_current()->parent->isChildMadeSuccess = 0;
-    sema_up(&thread_current()->parent->childExecLock);
-    sema_up(&thread_current()->parent->waitingLock);
-    thread_exit ();
+    sema_up(&thread_current()->parent->childExecLock);    
+    exit(-1);
   }
   else {
     thread_current()->parent->isChildMadeSuccess = 1;
     sema_up(&thread_current()->parent->childExecLock);
-    sema_up(&thread_current()->parent->waitingLock);
   }
 
   /* Start the user process by simulating a return from an
