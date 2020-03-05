@@ -107,6 +107,7 @@ thread_init (void)
   initial_thread->isFdInit = false;
   
   sema_init(&initial_thread->waitingLock, 0);
+  sema_init(&initial_thread->childExecLock, 0);
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -220,6 +221,7 @@ thread_create (const char *name, int priority,
   
   list_init (&t->children);
   sema_init(&t->waitingLock, 0);
+  sema_init(&t->childExecLock, 0);
 
   /* set up childs fdTable */
   t->fdTable = malloc(sizeof(struct file*) * 1);

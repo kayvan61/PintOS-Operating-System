@@ -94,9 +94,13 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) {
+    thread_current()->parent->isChildMadeSuccess = 0;
+    sema_up(&thread_current()->parent->childExecLock);
     thread_exit ();
   }
   else {
+    thread_current()->parent->isChildMadeSuccess = 1;
+    sema_up(&thread_current()->parent->childExecLock);
     sema_up(&thread_current()->parent->waitingLock);
   }
 

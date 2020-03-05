@@ -169,14 +169,17 @@ void exit(int status) {
 */
 tid_t exec (const char *cmd_line) {
   
-  ASSERT(cmd_line != NULL);
-  struct lock execLock;
-  tid_t pid = 1;
-  while(pid){
-    pid = process_execute(cmd_line);
-    if(pid == -1) break;
+  bool validation = validate_ptr(cmd_line, 1);
+  if(!validation){
+    exit(-1);
   }
-  return pid;
+
+  struct semaphore execWait;
+  tid_t pid = 1;
+  pid = process_execute(cmd_line);
+  sema_down(&thread_current()->childExecLock);
+  bool loaded = thread_current()->isChildMadeSuccess;
+  return loaded ? pid : -1;
 }
 
 /*  System Call: int wait (tid_t pid)

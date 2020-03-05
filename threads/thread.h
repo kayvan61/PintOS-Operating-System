@@ -108,6 +108,9 @@ struct thread
     struct semaphore waitingLock;
     struct thread* parent;
 
+    bool isChildMadeSuccess;
+    struct semaphore childExecLock;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
