@@ -193,9 +193,7 @@ tid_t exec (const char *cmd_line) {
     exit(-1);
   }
 
-  struct semaphore execWait;
-  tid_t pid = 1;
-  pid = process_execute(cmd_line);
+  tid_t pid = process_execute(cmd_line);
   sema_down(&thread_current()->childExecLock);
   bool loaded = thread_current()->isChildMadeSuccess;
   return loaded ? pid : -1;
@@ -299,7 +297,7 @@ int open (const char *file) {
    Returns the size, in bytes, of the file open as fd. */
 
 int filesize (int fd) {
-  return -1;
+  return inode_length(thread_current()->fdTable[fd-2]->inode);
 }
   
 /* System Call: int read (int fd, void *buffer, unsigned size)
