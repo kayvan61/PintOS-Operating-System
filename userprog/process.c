@@ -96,6 +96,7 @@ start_process (void *file_name_)
   if (!success) {
     thread_current()->parent->isChildMadeSuccess = 0;
     sema_up(&thread_current()->parent->childExecLock);
+    sema_up(&thread_current()->parent->waitingLock);
     thread_exit ();
   }
   else {
