@@ -38,6 +38,7 @@ syscall_handler (struct intr_frame *f)
     exit(*argv);
     break;
   case SYS_EXEC:
+    f->eax = exec(*argv);
     break;
   case SYS_WAIT:
     return_val = wait(*(argv+1));
