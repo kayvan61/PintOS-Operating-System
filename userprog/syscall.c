@@ -93,6 +93,7 @@ syscall_handler (struct intr_frame *f)
     f->eax = return_val;
     break;
   case SYS_SEEK:
+    seek(*(argv), *(argv+1));
     break;
   case SYS_TELL:
     break;
@@ -389,6 +390,17 @@ int write (int fd, const void *buffer, unsigned size) {
   These semantics are implemented in the file system and do not require any special effort in system call implementation.*/
 
 void seek (int fd, unsigned position) {
+  if(fd == 1 || fd == 0) {    
+    return;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return;
+  }
+  lock_acquire(&file_system_lock);
+  struct file* fileToSeek = thread_current()->fdTable[fd-2];
+  fileToSeek->pos = position;  
+  lock_release(&file_system_lock);
 
 }
 
