@@ -76,8 +76,14 @@ syscall_handler (struct intr_frame *f)
     f->eax = return_val;
     break;
   case SYS_FILESIZE:
+    f->eax = filesize(*(argv));
     break;
   case SYS_READ:
+    if(!validate_ptr((void *)*(argv+1), *(argv+2))) {
+      exit(-1);
+    }
+    return_val = read(*argv, (void *)*(argv+1), *(argv+2));
+    f->eax = return_val;
     break;
   case SYS_WRITE:    
     if(!validate_ptr((void *)*(argv+1), *(argv+2))) {
@@ -91,6 +97,7 @@ syscall_handler (struct intr_frame *f)
   case SYS_TELL:
     break;
   case SYS_CLOSE:
+    f->eax = filesize(*(argv));
     break;    
   }
 }
@@ -299,7 +306,19 @@ int open (const char *file) {
    Returns the size, in bytes, of the file open as fd. */
 
 int filesize (int fd) {
-  return -1;
+  if(fd == 1 || fd == 0) {    
+    return;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return -1;
+  }
+  int ret = -1;
+  lock_acquire(&file_system_lock);
+  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  ret = inode_length(fileToWrite->inode);
+  lock_release(&file_system_lock);
+  return ret;
 }
   
 /* System Call: int read (int fd, void *buffer, unsigned size)
@@ -308,7 +327,24 @@ int filesize (int fd) {
    Fd 0 reads from the keyboard using input_getc(). */
 
 int read (int fd, void *buffer, unsigned size) {
-  return -1;
+  if(fd == 0) {
+    // sysin
+  }
+  if(fd == 1 || fd < 0) {
+    return -1;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return -1;
+  }
+  struct file* fileToRead = thread_current()->fdTable[fd-2];
+  int ret = -1;
+  lock_acquire(&file_system_lock);
+  if(fileToRead != NULL && !fileToRead->deny_write) {
+    ret = file_read(fileToRead, buffer, size);
+  }
+  lock_release(&file_system_lock);
+  return ret;
 }
 
 /* System Call: int write (int fd, const void *buffer, unsigned size)
@@ -369,5 +405,15 @@ unsigned tell (int fd) {
   Closes file descriptor fd. Exiting or terminating a process implicitly closes all its open file descriptors, as if by calling this function for each one. */
 
 void close (int fd) {
-  
+  if(fd == 1 || fd == 0) {    
+    return;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return;
+  }
+  lock_acquire(&file_system_lock);
+  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  file_close(fileToWrite);
+  lock_release(&file_system_lock);
 }
