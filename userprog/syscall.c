@@ -14,8 +14,6 @@
 static void syscall_handler (struct intr_frame *);
 static bool validate_ptr(void* ptr, int spanSize);
 
-static struct lock file_system_lock; 
-
 void
 syscall_init (void)
 {
@@ -96,6 +94,7 @@ syscall_handler (struct intr_frame *f)
     seek(*(argv), *(argv+1));
     break;
   case SYS_TELL:
+    tell(*(argv));
     break;
   case SYS_CLOSE:
     f->eax = filesize(*(argv));
@@ -185,6 +184,9 @@ void exit(int status) {
   if(thread_current()->parent->waitingOnTid == thread_current()->tid) {
     sema_up(&thread_current()->parent->waitingLock);
   }
+  if(thread_current()->selfOnDisk != NULL) {
+    file_allow_write(thread_current()->selfOnDisk);
+  }
   thread_exit();
 }
 
@@ -202,8 +204,10 @@ tid_t exec (const char *cmd_line) {
   }
 
   tid_t pid = process_execute(cmd_line);
+  lock_acquire(&file_system_lock);
   sema_down(&thread_current()->childExecLock);
-  bool loaded = thread_current()->isChildMadeSuccess;
+  bool loaded = thread_current()->isChildMadeSuccess;  
+  lock_release(&file_system_lock);
   return loaded ? pid : -1;
 }
 
@@ -294,6 +298,7 @@ int open (const char *file) {
   lock_acquire(&file_system_lock);
   struct file* openedFile = filesys_open(file);
   if(openedFile == NULL){
+    lock_release(&file_system_lock); 
     return -1;
   }
   int ret = thread_add_fd(openedFile);
@@ -315,7 +320,9 @@ int filesize (int fd) {
   int ret = -1;
   lock_acquire(&file_system_lock);
   struct file* fileToWrite = thread_current()->fdTable[fd-2];
-  ret = inode_length(fileToWrite->inode);
+  if(fileToWrite != NULL) {
+    ret = inode_length(fileToWrite->inode);
+  }
   lock_release(&file_system_lock);
   return ret;
 }
@@ -371,10 +378,12 @@ int write (int fd, const void *buffer, unsigned size) {
   }
   
   struct file* fileToWrite = thread_current()->fdTable[fd-2];
-  int ret = -1;
+  int ret = 0;
   lock_acquire(&file_system_lock);
   if(fileToWrite != NULL) {
-    ret = file_write (fileToWrite, buffer, size);
+    if(!fileToWrite->deny_write) {
+      ret = file_write (fileToWrite, buffer, size);
+    }
   }
   lock_release(&file_system_lock);
   return ret;
@@ -408,7 +417,21 @@ void seek (int fd, unsigned position) {
    Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file. */
 
 unsigned tell (int fd) {
-  return 0;
+  if(fd == 1 || fd == 0) {    
+    return 0;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return;
+  }
+  int ret = 0;
+  lock_acquire(&file_system_lock);
+  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  if(fileToWrite != NULL) {
+    ret = file_tell(fileToWrite);
+  }
+  lock_release(&file_system_lock);
+  return ret;
 }
 
 /*System Call: void close (int fd)
@@ -424,6 +447,9 @@ void close (int fd) {
   }
   lock_acquire(&file_system_lock);
   struct file* fileToWrite = thread_current()->fdTable[fd-2];
-  file_close(fileToWrite);
+  if(fileToWrite != NULL) {
+    file_close(fileToWrite);
+    file_allow_write(fileToWrite);
+  }
   lock_release(&file_system_lock);
 }

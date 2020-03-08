@@ -98,16 +98,22 @@ struct thread
 
     int returnCode;
 
+    /* to deny writes during execution */
+    struct file* selfOnDisk;
+
+    /* fd table */
     bool isFdInit;
     struct file **fdTable;
     int fdCount;
     int fdCap;
 
+    /* children tracking for waiting */
     struct list children;
     int waitingOnTid;
     struct semaphore waitingLock;
     struct thread* parent;
 
+    /* synchro for exec */
     bool isChildMadeSuccess;
     struct semaphore childExecLock;
 

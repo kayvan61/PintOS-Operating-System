@@ -26,5 +26,6 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 
+static struct lock file_system_lock; 
 
 #endif /* userprog/syscall.h */
