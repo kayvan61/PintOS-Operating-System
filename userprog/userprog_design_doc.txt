@@ -8,7 +8,7 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
+Ali Mansoorshahi <kayvan.mansoor@utexas.edu>
 FirstName LastName <email@utexas.edu>
 
 ---- PRELIMINARIES ----
@@ -19,6 +19,8 @@ FirstName LastName <email@utexas.edu>
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
+used page fault hander to do pointer checking???? maybe???? pwease?????
+
                            ARGUMENT PASSING
                            ================
 
@@ -28,15 +30,32 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+None.
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+The command string is passed to load which then passes it to setup_stack (process.c).
+The command string is then split along spaces using strtok_r. This takes care of double spaces case.
+This is then coppied into a temporary array of tokens.
+Once the whole string is tokenized we place the elements onto the stack in reverse order.
+Every token that is pushed has the esp value they are located at saved in another array.
+Then we push the padding, the null, the pointers, the pointer to the pointers, and the count.
+
+To prevent overflowing we the stack page we rely on the pagefault handler + the provided funcitons
+to validate the stack pointer after every write.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+strtok is not safe to use in a multi-threaded program.
+If a function used strtok and the scheduler changed which thread was running the output from strtok
+would fail when the original thread was resumed.
+Since pintos is an operating system which is very much multi-threaded we use a reentrant version of strtok. 
 
                              SYSTEM CALLS
                              ============

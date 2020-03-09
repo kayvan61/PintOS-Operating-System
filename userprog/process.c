@@ -569,8 +569,7 @@ setup_stack (void **esp, char* f_name)
       }
       else {
         palloc_free_page (kpage);
-	  }
-	  // hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
+      }
     }
   return success;
 }
