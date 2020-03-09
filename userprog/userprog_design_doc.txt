@@ -9,7 +9,7 @@
 >> Fill in the names and email addresses of your group members.
 
 Ali Mansoorshahi <kayvan.mansoor@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Utsha Khondkar <utsha.kh@utexas.edu>
 
 ---- PRELIMINARIES ----
 
