@@ -120,7 +120,8 @@ struct child_return_info {
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
 
-File descriptors are unique per process but their location in memory is not.
+File descriptors are unique per process but their pointer to an iNode memory is not.
+Each process has its own File descriptor table and each open file gets a new file descriptor.
 
 Files contain an iNode which represents their contents in memory. While the file is open all processes that try
 to open the file will get a file descriptor with the same iNode (but different offset).
@@ -140,6 +141,16 @@ The kernel then kills the process if it gets a -1 after a write or a fail after 
 >> (e.g. calls to pagedir_get_page()) that might result?  What about
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
+
+(full page)
+1 minimum if the data is only contained in one page
+4096 maximum if the data is scattered across pages
+(2 bytes)
+1 minimum if the data is only contained in one page
+2 maximum if the data is across a page boundary
+
+This can be improved by attempting to keep fragmenting low and trying to keep
+all data in the minimum amount of pages possible. 
 
 
 
@@ -165,7 +176,7 @@ exits it must set the done flag in the parent process and call sema up on the pa
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
-writes and reads are all done through the put_user and get_user functions. these functions do error checking for us.
+writes and reads are all checked through the put_user and get_user functions. these functions do error checking for us.
 The main mechanism of error checking is tucked away into the pagefault handler thus leaving only a few lines of assembler
 visible in the syscall functions. once a process has started we ensure that it calls exit() before returning.
 sigkill will result in a exit(-1) call, pagefault failure will result in a exit(-1), etc. in exit we unlock all locks and
@@ -179,12 +190,10 @@ that are stored in each thread.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
-    In the thread struct, we added a bool variable "isChildMadeSuccess", and a 
-semaphore "childExecLock" to synchronize the exec() syscall.
-    In the start_process(), we do sema_up() the childExecLock after the 
-loading new process. If the child process is successfully loaded,
+In the thread struct, we added a bool variable "isChildMadeSuccess", and a semaphore "childExecLock" to synchronize the exec() syscall.
+In the start_process(), we do sema_up() the childExecLock after the loading new process. If the child process is successfully loaded,
 we set the variable isChildMadeSuccess in the parent thread to be True, and otherwise False.
-    In the exec() function, the parent process is waiting for the child process to complete loading
+In the exec() function, the parent process is waiting for the child process to complete loading
 by using sema_down() the childExecLock. Once the semaphore is passed, it checks the variable isChildMadeSuccess
 to see whether the loading was successful or not, and returns -1 or tid depending on the result.
 
@@ -195,16 +204,39 @@ to see whether the loading was successful or not, and returns -1 or tid dependin
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+wait before C exits:
+wait will call sema_down on a semaphore that initially is 0.
+The child then calls sema_up on that semaphore.
+
+wait after C exits:
+the child C will set a flag in the parent's reference to it telling the parent that C is exiting.
+When P waits on C it checks this flag before calling sema_down.
+
+P terminates before C:
+when a process terminates is goes through its child list and orphans all of them then it frees itself.
+C then sees it has no parent upon exiting and exits without issue.
+
+P terminates after C:
+P frees the list after it is done even if it hasn't checked the child explicitly the child's reference will be freed in the parents memory.
+
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+Because the Doc said that using page_fault handler was fast.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+Advantages:    no explicit upper limit on open files. Amortized doubling. reuses file descriptors that are closed.
+Disadvantages: calls realloc so its slow. have to keep in mind the mapping from fd number to fd index.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+nope.
 
                            SURVEY QUESTIONS
                            ================
@@ -218,14 +250,24 @@ the semester.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+using the page_fault thing was tough because understanding interrupt frames was hard.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+using the page_fault handler because it gave a deeper understanding of interrupts and forced us to read some assembly.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
+nope.
+
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
 
+TAs did a great job responding to Piazza quickly and being very helpful.
+
 >> Any other comments?
+
+Thanks to the TAs <3
