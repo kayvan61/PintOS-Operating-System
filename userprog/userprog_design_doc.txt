@@ -179,7 +179,14 @@ that are stored in each thread.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
-
+    In the thread struct, we added a bool variable "isChildMadeSuccess", and a 
+semaphore "childExecLock" to synchronize the exec() syscall.
+    In the start_process(), we do sema_up() the childExecLock after the 
+loading new process. If the child process is successfully loaded,
+we set the variable isChildMadeSuccess in the parent thread to be True, and otherwise False.
+    In the exec() function, the parent process is waiting for the child process to complete loading
+by using sema_down() the childExecLock. Once the semaphore is passed, it checks the variable isChildMadeSuccess
+to see whether the loading was successful or not, and returns -1 or tid depending on the result.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
