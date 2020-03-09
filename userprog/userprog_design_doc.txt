@@ -19,7 +19,7 @@ FirstName LastName <email@utexas.edu>
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
 
-used page fault hander to do pointer checking???? maybe???? pwease?????
+used page fault hander to do pointer checking
 
                            ARGUMENT PASSING
                            ================
@@ -46,7 +46,7 @@ Every token that is pushed has the esp value they are located at saved in anothe
 Then we push the padding, the null, the pointers, the pointer to the pointers, and the count.
 
 To prevent overflowing we the stack page we rely on the pagefault handler + the provided funcitons
-to validate the stack pointer after every write.
+to validate the stack pointer after every movement of the stack pointer. If it points to an invalid address then we kill the process. 
 
 ---- RATIONALE ----
 
@@ -66,14 +66,73 @@ Since pintos is an operating system which is very much multi-threaded we use a r
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+    int returnCode;
+
+    /* to deny writes during execution */
+    struct file* selfOnDisk;
+
+    /* fd table */
+    bool isFdInit;
+    struct file **fdTable;
+    int fdCount;
+    int fdCap;
+
+    /* children tracking for waiting */
+    struct list children;
+    int waitingOnTid;
+    struct semaphore waitingLock;
+    struct thread* parent;
+
+    /* synchro for exec */
+    bool isChildMadeSuccess;
+    struct semaphore childExecLock;
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+
+struct child_return_info {
+  tid_t tid;
+  struct list_elem elem;
+  int returnCode;
+  bool hasBeenChecked;
+};
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+File descriptors are unique per process but their location in memory is not.
+
+Files contain an iNode which represents their contents in memory. While the file is open all processes that try
+to open the file will get a file descriptor with the same iNode (but different offset).
+If the file is not open first then the first process to open the file will get a unique iNode.
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+All writes and reads are done without validation. if it result in a page fault then the page fault handler returns -1 to the kernel.
+The kernel then kills the process if it gets a -1 after a write or a fail after a read.
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -82,8 +141,15 @@ Since pintos is an operating system which is very much multi-threaded we use a r
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+wait is implemented as a call to process_wait. process_wait first iterates over a list of all children to a process.
+if the tid is not in the list then it returns -1. Then it checks if that process is already done. if it is then it returns the status code and
+removes the child entry from the list. if it is not done then the waiting process will attempt to sema_down on a waiting semaphore. When a child
+exits it must set the done flag in the parent process and call sema up on the parents waiting semaphore. all processes will exit like this.
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -99,12 +165,21 @@ Since pintos is an operating system which is very much multi-threaded we use a r
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+writes and reads are all done through the put_user and get_user functions. these functions do error checking for us.
+The main mechanism of error checking is tucked away into the pagefault handler thus leaving only a few lines of assembler
+visible in the syscall functions. once a process has started we ensure that it calls exit() before returning.
+sigkill will result in a exit(-1) call, pagefault failure will result in a exit(-1), etc. in exit we unlock all locks and
+free and resources the thread is holding on to. FInally we call thread_exit which frees all the lists and malloced elements
+that are stored in each thread.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
