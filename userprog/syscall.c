@@ -9,10 +9,13 @@
 #include "lib/syscall-nr.h"
 #include "userprog/process.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 #include "filesys/filesys.h"
 
 static void syscall_handler (struct intr_frame *);
-static bool validate_ptr(void* ptr, int spanSize);
+static bool validate_ptr(const void* ptr, int spanSize);
+
+static struct lock file_system_lock; 
 
 void
 syscall_init (void)
@@ -46,7 +49,7 @@ syscall_handler (struct intr_frame *f)
     exit(*argv);
     break;
   case SYS_EXEC:
-    f->eax = exec(*argv);
+    f->eax = exec(*(char**)argv);
     break;
   case SYS_WAIT:
     return_val = wait(*(argv));
@@ -117,18 +120,18 @@ get_user (const uint8_t *uaddr)
  
 /* Writes BYTE to user address UDST.
    UDST must be below PHYS_BASE.
-   Returns true if successful, false if a segfault occurred. */
+   Returns true if successful, false if a segfault occurred. 
 static bool
-put_user (uint8_t *udst, uint8_t byte)
+put_user (uint8_t *udst, const uint8_t byte)
 {
   int error_code;
   asm ("movl $1f, %0; movb %b2, %1; 1:"
        : "=&a" (error_code), "=m" (*udst) : "q" (byte));
   return error_code != -1;
-}
+  }*/
 
 static bool
-validate_ptr(void* ptr, int spanSize) {
+validate_ptr(const void* ptr, int spanSize) {
   
   if(ptr >= PHYS_BASE) {
     exit(-1);
@@ -143,8 +146,7 @@ validate_ptr(void* ptr, int spanSize) {
     }
     else {
       // invalid read
-      exit(-1);
-      put_user(ptr, 0x0a);
+      exit(-1);      
     }
   }
   else {
@@ -198,7 +200,7 @@ void exit(int status) {
 */
 tid_t exec (const char *cmd_line) {
   
-  bool validation = validate_ptr(cmd_line, 1);
+  bool validation = validate_ptr((const void*)cmd_line, 1);
   if(!validation){
     exit(-1);
   }
@@ -311,7 +313,7 @@ int open (const char *file) {
 
 int filesize (int fd) {
   if(fd == 1 || fd == 0) {    
-    return;
+    return -1;
   }
   struct thread* t = thread_current();
   if(t->fdCap <= fd-2 || fd < 0) {
@@ -335,6 +337,20 @@ int filesize (int fd) {
 int read (int fd, void *buffer, unsigned size) {
   if(fd == 0) {
     // sysin
+    unsigned int indexOfBuffer = 0;
+    char currentChar = 0;
+    char* bufStr = (char*)buffer;
+    while(indexOfBuffer < size - 1) {      
+      currentChar = input_getc();
+      if(currentChar == 10) {
+	bufStr[indexOfBuffer] = '\0';
+	return indexOfBuffer;
+      }
+      bufStr[indexOfBuffer] = currentChar;
+      indexOfBuffer++;
+    }
+    return size;
+    
   }
   if(fd == 1 || fd < 0) {
     return -1;
@@ -422,7 +438,7 @@ unsigned tell (int fd) {
   }
   struct thread* t = thread_current();
   if(t->fdCap <= fd-2 || fd < 0) {
-    return;
+    return 0;
   }
   int ret = 0;
   lock_acquire(&file_system_lock);
