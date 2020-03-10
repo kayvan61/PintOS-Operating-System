@@ -265,7 +265,7 @@ int thread_add_fd(struct file* newFilePtr) {
   if(t->fdCap == t->fdCount) {
     int oldCap = t->fdCap;
     t->fdCap *= 2;
-    t->fdTable = (struct thread**)realloc(t->fdTable, sizeof(struct thread*) * t->fdCap);
+    t->fdTable = (struct file**)realloc(t->fdTable, sizeof(struct file*) * t->fdCap);
     for(int i = oldCap; i < t->fdCap; i++) {
       t->fdTable[i] = NULL;
     }
@@ -370,8 +370,8 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
-  schedule ();
+  thread_current ()->status = THREAD_DYING;  
+  schedule ();  
   NOT_REACHED ();
 }
 

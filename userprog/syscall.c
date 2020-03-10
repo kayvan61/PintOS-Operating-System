@@ -162,6 +162,13 @@ void halt (void) {
   shutdown_power_off();
 }
 
+void orphan_threads (struct thread *t, void *aux) {
+    int parentTid = *(int*)aux;
+    if(t->tid == parentTid) {
+        t->parent = NULL;
+    }
+}
+
 /*  System Call: void exit (int status)
     Terminates the current user program, returning status to the kernel. 
     If the process's parent waits for it (see below), this is the status that will be returned. 
@@ -170,22 +177,30 @@ void halt (void) {
 void exit(int status) {
   printf("%s: exit(%d)\n", thread_current()->name, status);
   thread_current()->returnCode = status;
-  
-  struct list_elem* curChild;
-  for (curChild = list_begin (&thread_current()->parent->children); curChild != list_end (&thread_current()->parent->children);
+
+  if(thread_current()->parent != NULL) {
+      struct list_elem* curChild;
+      for (curChild = list_begin (&thread_current()->parent->children); curChild != list_end (&thread_current()->parent->children);
            curChild = list_next (curChild))
-    {
-      struct child_return_info *f = list_entry (curChild, struct child_return_info, elem);
-      if(f->tid == thread_current()->tid)
-	{
-	  f->hasBeenChecked = true;
-	  f->returnCode = status;
-	}
-    }
+          {
+              struct child_return_info *f = list_entry (curChild, struct child_return_info, elem);
+              if(f->tid == thread_current()->tid)
+                  {
+                      f->hasBeenChecked = true;
+                      f->returnCode = status;
+                  }
+          }
   
-  if(thread_current()->parent->waitingOnTid == thread_current()->tid) {
-    sema_up(&thread_current()->parent->waitingLock);
+      if(thread_current()->parent->waitingOnTid == thread_current()->tid) {
+          sema_up(&thread_current()->parent->waitingLock);
+      }
   }
+
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  thread_foreach(&orphan_threads, &thread_current()->tid);
+  intr_set_level (old_level);
+    
   if(thread_current()->selfOnDisk != NULL) {
     file_allow_write(thread_current()->selfOnDisk);
   }

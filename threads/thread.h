@@ -13,8 +13,7 @@ enum thread_status
     THREAD_RUNNING,     /* Running thread. */
     THREAD_READY,       /* Not running but ready to run. */
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
-    THREAD_DYING,       /* About to be destroyed. */
-    THREAD_ZOMBIE       /* Thread is waiting to be waited on for destruction */
+    THREAD_DYING        /* About to be destroyed. */
   };
 
 /* Thread identifier type.
