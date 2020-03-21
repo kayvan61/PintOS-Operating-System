@@ -19,7 +19,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
+#include "vm/frame.h"
 
 #define LOGGING_LEVEL 6
 #define MAX_ARGS      50
@@ -475,7 +475,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = get_free_frame ();
       if (kpage == NULL)
         return false;
 
@@ -522,7 +522,7 @@ setup_stack (void **esp, char* f_name)
 
   log(L_TRACE, "setup_stack()");
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_free_frame();
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
