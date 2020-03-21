@@ -5,12 +5,17 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/interrupt.h"
+#include "userprog/pagedir.h"
+#include "userprog/syscall.h"
+#include "vm/frame.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+static int install_page (void *upage, void *kpage, int writable);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -145,6 +150,8 @@ page_fault (struct intr_frame *f)
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
+  struct thread* t = thread_current();
+
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -169,19 +176,49 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  /* kernel page fault. hopefully caused by a buffer validation check */
   if(!user) {
     f->eip = (void (*)(void))f->eax;
     f->eax = 0xffffffff;
     return;    
   }
-  exit(-1);
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+
+  /* user page fault. check if it's valid.
+     if its valid then swap in the page using the suplimental page table
+   */
+  // not in kernel section
+  uint32_t stack_delta = f->esp - fault_addr;
+  if((uint32_t)fault_addr >= 0xc0000000) {
+    exit(-1);
+  }
+
+  if((uint32_t)fault_addr < (uint32_t)f->esp) {
+    if(((stack_delta != 4) && (stack_delta != 32) )) {
+      exit(-1);
+    }
+  }
+  
+  void* new_free_frame = get_free_frame();
+  if(!install_page ((void*)((int32_t)fault_addr & 0xFFFFF000), new_free_frame, 1)) {
+    free_user_frame(new_free_frame);
+    exit(-1);
+  }
+  
+  return;
+}
+
+static int install_page (void *upage, void *kpage, int writable)
+{
+  struct thread *t = thread_current ();
+
+  /* Verify that there's not already a page at that virtual
+     address, then map our page there. */
+  int res = pagedir_get_page (t->pagedir, upage) == NULL
+         && pagedir_set_page (t->pagedir, upage, kpage, writable);
+
+  if(res) {
+    frame_table_update(t->tid, kpage, upage);
+  }
+  
+  return res;
 }
