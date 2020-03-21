@@ -25,6 +25,8 @@ void frame_alloc_init() {
 
   UserFrameTableEntry* cur_frame;
   void* frame_ptr;
+
+  bitmap_set_all(frame_used_vector, 0);
   
   /* alloc all the user frames and keep them to ourselves */
   /* this is greedy allocator scheme we can switch to lazy later if we want */
@@ -37,16 +39,15 @@ void frame_alloc_init() {
      */
     cur_frame->frame_ptr = frame_ptr;
     cur_frame->page_ptr = NULL;
+    cur_frame->owner_tid = -1;
     
     cur_frame->extra_flags = 0; /* initial its not accessed and not dirty */
     list_push_back(&all_frame_list, &cur_frame->allelem);
-  }
-
-  
+  }  
 }
 
-void* get_free_frame() {
-  size_t index_of_free_frame = bitmap_scan (frame_used_vector, 0, 1, 0);
+void* get_free_frame() {  
+  size_t index_of_free_frame = bitmap_scan (frame_used_vector, 0, 1, 0);  
   if(index_of_free_frame == BITMAP_ERROR) {
     /* this will trigger the replacement policy in the future */
     return NULL;
@@ -65,4 +66,37 @@ void* get_free_frame() {
       }
     }
   return NULL;
+}
+
+void frame_table_update(int tid, void* frame_ptr, void* user_v_addr) {
+  struct list_elem *e;
+
+  /* traverse frame list to find frame to free in the bit vector */
+  for (e = list_begin (&all_frame_list); e != list_end (&all_frame_list);
+       e = list_next (e))
+    {
+      UserFrameTableEntry *pfe = list_entry (e, UserFrameTableEntry, allelem);
+      
+      if(pfe->frame_ptr == frame_ptr) {	
+	pfe->page_ptr = user_v_addr;
+      }      
+    } 
+}
+
+void free_user_frame(void* kFrame) {
+  size_t index_of_frame_to_free = 0;
+
+  struct list_elem *e;
+
+  /* traverse frame list to find frame to free in the bit vector */
+  for (e = list_begin (&all_frame_list); e != list_end (&all_frame_list);
+       e = list_next (e), index_of_frame_to_free++)
+    {
+      UserFrameTableEntry *pfe = list_entry (e, UserFrameTableEntry, allelem);
+      
+      if(pfe->frame_ptr == kFrame) {
+	bitmap_set(frame_used_vector, index_of_frame_to_free, 0);
+	pfe->page_ptr = NULL;
+      }      
+    } 
 }

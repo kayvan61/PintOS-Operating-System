@@ -10,7 +10,9 @@
 typedef struct {
   void* page_ptr;
   void* frame_ptr;
+  int owner_tid;
   uint8_t extra_flags;
+  
 
   struct list_elem allelem;           /* List element for all frame list. */
   
@@ -19,3 +21,7 @@ typedef struct {
 void frame_alloc_init(void);
 
 void* get_free_frame(void);
+
+void frame_table_update(int tid, void* frame_ptr, void* user_v_addr);
+
+void free_user_frame(void* kFrame);
