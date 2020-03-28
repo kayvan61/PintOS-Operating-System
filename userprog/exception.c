@@ -1,12 +1,14 @@
 #include "userprog/exception.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/interrupt.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
+#include "filesys/file.h"
 #include "vm/frame.h"
 
 /* Number of page faults processed. */
@@ -175,15 +177,19 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-
+  
   /* kernel page fault. hopefully caused by a buffer validation check */
   if(!user) {
+    if(not_present) {
+      // page needs to be swapped in first      
+    }
     f->eip = (void (*)(void))f->eax;
     f->eax = 0xffffffff;
-    return;    
+    return;
   }
 
-  /* user page fault. check if it's valid.
+  /* 
+     user page fault. check if it's valid.
      if its valid then swap in the page using the suplimental page table
    */
   // not in kernel section
@@ -191,15 +197,49 @@ page_fault (struct intr_frame *f)
   if((uint32_t)fault_addr >= 0xc0000000) {
     exit(-1);
   }
+  
+  /* get free frame. (Moved from load_segment in process.c) */
+  void* new_free_frame = get_free_frame();
+  int writeable = 1;
+  
+  SupPageEntry* SPTE = thread_get_SPTE(fault_addr);
+  if(SPTE == NULL) {
+    // There is no SPTE for this page yet
+    // so lets check if its a stack access
+    if((uint32_t)fault_addr < (uint32_t)f->esp) {
+      if(((stack_delta != 4) && (stack_delta != 32) )) {
+	exit(-1);
+      }
+    }
+  } else {
 
-  if((uint32_t)fault_addr < (uint32_t)f->esp) {
-    if(((stack_delta != 4) && (stack_delta != 32) )) {
+    writeable = SPTE->isWriteable;
+    // the SPTE exists so this is probably a segment of code or something thats in swap
+    // if its on disk then load it into memory
+    /* Load this page. from disk if its on disk. (Moved from load_segment in process.c) */
+    if(SPTE->location == DISK) {
+      file_seek (SPTE->locationOnDisk, SPTE->offsetInDisk);
+      if (file_read (SPTE->locationOnDisk, new_free_frame, SPTE->readBytes) != (int)SPTE->readBytes) {
+	free_user_frame (new_free_frame);
+	exit(-1);
+      }
+      memset (new_free_frame + SPTE->readBytes, 0, SPTE->zeroBytes);
+    }
+
+    // if its in swap then load it into memory from swap
+    else if(SPTE->location == SWAP) {
+      // TODO: Move from swap into mem
+    }
+    
+    // if both of the above fail then there is something very wrong with our
+    // updating of SPTEs and we need to look into that
+    else {
       exit(-1);
     }
   }
   
-  void* new_free_frame = get_free_frame();
-  if(!install_page ((void*)((int32_t)fault_addr & 0xFFFFF000), new_free_frame, 1)) {
+  /* Add the page to the process's address space. (Moved from load_segment in process.c)*/
+  if(!install_page ((void*)((uint32_t)fault_addr & 0xFFFFF000), new_free_frame, writeable)) {
     free_user_frame(new_free_frame);
     exit(-1);
   }
@@ -207,7 +247,7 @@ page_fault (struct intr_frame *f)
   return;
 }
 
-static int install_page (void *upage, void *kpage, int writable)
+static int install_page (void *upage, void *kpage, SupPageEntry* SPTE, int writable)
 {
   struct thread *t = thread_current ();
 
@@ -218,6 +258,8 @@ static int install_page (void *upage, void *kpage, int writable)
 
   if(res) {
     frame_table_update(t->tid, kpage, upage);
+    SPTE->currentFrame = kpage;
+    SPTE->location = MEM;
   }
   
   return res;

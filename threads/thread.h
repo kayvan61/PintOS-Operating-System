@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "synch.h"
 #include "filesys/file.h"
+#include "vm/page.h"
+#include <hash.h>
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -116,6 +118,11 @@ struct thread
     bool isChildMadeSuccess;
     struct semaphore childExecLock;
 
+    /* Supplimental Page Table*/
+    struct hash SPageTable;
+
+    void* t_esp;
+    
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -170,6 +177,9 @@ int thread_get_load_avg (void);
 
 int thread_add_fd(struct file*);
 void thread_remove_fd(int);
+
+void thread_add_SPTE(SupPageEntry* spte);
+SupPageEntry* thread_get_SPTE(void* upage);
 
 struct thread* thread_get_thread_by_tid(tid_t);
 

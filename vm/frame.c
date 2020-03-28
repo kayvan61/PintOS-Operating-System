@@ -7,12 +7,15 @@
 
 #define IS_ACCESSED(x) x & 1
 #define IS_DIRTY(x)    x & 2
+#define IS_PRESENT(x)  x & 4
 
 #define SET_ACCESSED(x) x | 1
 #define SET_DIRTY(x)    x | 2
+#define SET_PRESENT(x)  x | 4
 
 #define CLEAR_ACCESSED(x) x & ~1
 #define CLEAR_DIRTY(x)    x & ~2
+#define CLEAR_PRESENT(x)  x & ~4
 
 
 struct bitmap* frame_used_vector;

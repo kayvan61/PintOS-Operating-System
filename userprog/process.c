@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #define LOGGING_LEVEL 6
 #define MAX_ARGS      50
@@ -189,7 +190,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -378,6 +379,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp, (char*)file_name))
     goto done;
 
+  t->t_esp = esp;
+  
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -465,7 +468,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
   log(L_TRACE, "load_segment()");
 
-  file_seek (file, ofs);
+  SupPageEntry* currentSPTE;
+  
   while (read_bytes > 0 || zero_bytes > 0)
     {
       /* Calculate how to fill this page.
@@ -474,30 +478,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = get_free_frame ();
-      if (kpage == NULL)
-        return false;
+      /* 
+	 register the user page and then let the page fault handler bring it
+	 into memory
+      */
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          free_user_frame (kpage);
-          return false;
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable))
-        {
-          free_user_frame (kpage);
-          return false;
-        }
-
+      // This page doesnt exist in a frame yet.
+      currentSPTE = createSupPageEntry(upage, page_zero_bytes, page_read_bytes, thread_current()->tid, file, ofs, writable ? 1 : 0);
+      thread_add_SPTE(currentSPTE);
+            
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      ofs   += PGSIZE;
     }
   return true;
 }

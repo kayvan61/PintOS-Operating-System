@@ -232,7 +232,31 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* Init the SPT */
+  hash_init(&t->SPageTable, pageHash, pageLess, NULL);
+
   return tid;
+}
+
+void thread_add_SPTE(SupPageEntry* spte) {
+  struct thread* t = thread_current();
+  
+  hash_insert(&t->SPageTable, &spte->hashElem);
+}
+
+SupPageEntry* thread_get_SPTE(void* upage) {
+  struct thread* t = thread_current();
+  
+  SupPageEntry scratchSPTE;
+  scratchSPTE.pageStart = (uint32_t)upage & 0xFFFFF000;
+
+  struct hash_elem *e = hash_find(&t->SPageTable, &scratchSPTE.hashElem);
+  if(e != NULL)  {    
+    return hash_entry(e, SupPageEntry, hashElem);
+  }
+  else {
+    return NULL;
+  }
 }
 
 int thread_add_fd(struct file* newFilePtr) {
@@ -545,7 +569,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
+  intr_set_level (old_level);  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
