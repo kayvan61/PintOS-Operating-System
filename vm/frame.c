@@ -2,6 +2,7 @@
 #include <bitmap.h>
 #include "threads/palloc.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 
 #define TOTAL_NUM_FRAMES 1 << 20
 
@@ -53,6 +54,7 @@ void* get_free_frame() {
   size_t index_of_free_frame = bitmap_scan (frame_used_vector, 0, 1, 0);  
   if(index_of_free_frame == BITMAP_ERROR) {
     /* this will trigger the replacement policy in the future */
+    
     return NULL;
   }
   struct list_elem *e;
@@ -74,6 +76,9 @@ void* get_free_frame() {
 void frame_table_update(int tid, void* frame_ptr, void* user_v_addr) {
   struct list_elem *e;
 
+  frame_ptr   = (void*)((unsigned int)frame_ptr & 0xFFFFF000);
+  user_v_addr = (void*)((unsigned int)user_v_addr & 0xFFFFF000);
+
   /* traverse frame list to find frame to free in the bit vector */
   for (e = list_begin (&all_frame_list); e != list_end (&all_frame_list);
        e = list_next (e))
@@ -86,11 +91,12 @@ void frame_table_update(int tid, void* frame_ptr, void* user_v_addr) {
     } 
 }
 
-void free_user_frame(void* kFrame) {
+void free_user_frame(void* kFrame) {  
   size_t index_of_frame_to_free = 0;
-
+  
   struct list_elem *e;
 
+  kFrame = (void*)((unsigned int)kFrame & 0xFFFFF000);
   /* traverse frame list to find frame to free in the bit vector */
   for (e = list_begin (&all_frame_list); e != list_end (&all_frame_list);
        e = list_next (e), index_of_frame_to_free++)
@@ -102,4 +108,18 @@ void free_user_frame(void* kFrame) {
 	pfe->page_ptr = NULL;
       }      
     } 
+}
+
+UserFrameTableEntry* frame_find_userframe_entry(void* framePtr) {
+  struct list_elem *e;
+  
+  for (e = list_begin (&all_frame_list); e != list_end (&all_frame_list);
+       e = list_next (e))
+    {
+      UserFrameTableEntry *t = list_entry (e, UserFrameTableEntry, allelem);
+      if(t->frame_ptr == framePtr) {
+	return t;
+      }
+    }
+  return NULL;
 }

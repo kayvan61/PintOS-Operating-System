@@ -30,3 +30,5 @@ void frame_table_update(int tid, void* frame_ptr, void* user_v_addr);
 // Frees frame without adding it back to the unmanaged pool
 // ONLY USE THIS FOR USER FRAMES
 void free_user_frame(void* kFrame);
+
+UserFrameTableEntry* frame_find_userframe_entry(void* framePtr);
