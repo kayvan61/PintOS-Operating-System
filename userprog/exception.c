@@ -17,7 +17,7 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 
-static int install_page (void *upage, void *kpage, int writable);
+static int install_page (void *upage, void *kpage, SupPageEntry* SPTE, int writable);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -177,15 +177,21 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  
-  /* kernel page fault. hopefully caused by a buffer validation check */
-  if(!user) {
-    if(not_present) {
-      // page needs to be swapped in first      
+
+  SupPageEntry* SPTE = thread_get_SPTE(fault_addr);
+  if(SPTE != NULL) {
+    if(SPTE->location == SWAP) {
+      // swap it back into memory;
+      printf("swapping should occur\n");
     }
-    f->eip = (void (*)(void))f->eax;
-    f->eax = 0xffffffff;
-    return;
+    // if it's anywhere else then it will be handled later.
+  }else {  
+    /* kernel page fault. hopefully caused by a buffer validation check */
+    if(!user) {
+      f->eip = (void (*)(void))f->eax;
+      f->eax = 0xffffffff;
+      return;
+    }
   }
 
   /* 
@@ -200,9 +206,8 @@ page_fault (struct intr_frame *f)
   
   /* get free frame. (Moved from load_segment in process.c) */
   void* new_free_frame = get_free_frame();
-  int writeable = 1;
+  int writable = 1;
   
-  SupPageEntry* SPTE = thread_get_SPTE(fault_addr);
   if(SPTE == NULL) {
     // There is no SPTE for this page yet
     // so lets check if its a stack access
@@ -211,9 +216,14 @@ page_fault (struct intr_frame *f)
 	exit(-1);
       }
     }
+
+    // its a stack addr lets add a SPTE for the new grown stack page
+    // its not linked to any file so it has no location on disk. no zero bytes. is writable
+    writable = 1;
+    SPTE = createSupPageEntry((void*)((uint32_t)fault_addr & 0xFFFFF000), 0, 4096, thread_current()->tid, NULL, 0, 1);
   } else {
 
-    writeable = SPTE->isWriteable;
+    writable = SPTE->isWritable;
     // the SPTE exists so this is probably a segment of code or something thats in swap
     // if its on disk then load it into memory
     /* Load this page. from disk if its on disk. (Moved from load_segment in process.c) */
@@ -239,7 +249,7 @@ page_fault (struct intr_frame *f)
   }
   
   /* Add the page to the process's address space. (Moved from load_segment in process.c)*/
-  if(!install_page ((void*)((uint32_t)fault_addr & 0xFFFFF000), new_free_frame, writeable)) {
+  if(!install_page ((void*)((uint32_t)fault_addr & 0xFFFFF000), new_free_frame, SPTE, writable)) {
     free_user_frame(new_free_frame);
     exit(-1);
   }

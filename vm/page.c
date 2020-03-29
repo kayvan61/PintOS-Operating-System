@@ -17,7 +17,7 @@ SupPageEntry* createSupPageEntry(void* upage, int zBytes, int rBytes, int tid, s
   SPTE->location = DISK;
   SPTE->tid = tid;
 
-  SPTE->isWriteable = wr;
+  SPTE->isWritable = wr;
   
   return SPTE;
 }

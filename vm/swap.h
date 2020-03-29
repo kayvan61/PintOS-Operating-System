@@ -3,6 +3,13 @@
  */
 
 
+typedef struct {
+
+  int owner_tid;
+  void* upage;
+  
+} SwapTableEntry;
+
 void swapInit();
 /*
   evit the page that currently in the frame that contains address kpage into swap 

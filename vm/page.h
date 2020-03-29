@@ -24,7 +24,7 @@ typedef struct {
   unsigned int offsetInDisk;
   
   unsigned int readBytes, zeroBytes;
-  int isWriteable;
+  int isWritable;
   
   enum PageLocation location;
   int tid;
