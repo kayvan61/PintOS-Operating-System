@@ -11,15 +11,15 @@
 #include "threads/malloc.h"
 #include "filesys/file.h"
 
-enum PageLocation {SWAP, MEM, DISK};
+enum PageLocation {SWAP, MEM, DISK, ZERO};
 
 typedef struct {
   struct hash_elem hashElem;
   
   void* pageStart;
   void* currentFrame;
-  void* locationInSwap;
-  
+
+  unsigned int locationInSwap;
   struct file* locationOnDisk;
   unsigned int offsetInDisk;
   
@@ -29,6 +29,8 @@ typedef struct {
   enum PageLocation location;
   int tid;
 } SupPageEntry;
+
+SupPageEntry* findSupPageEntry(void* upage);
 
 SupPageEntry* createSupPageEntry(void* upage, int zBytes, int rBytes, int tid, struct file* f, int, int);
 

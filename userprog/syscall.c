@@ -27,6 +27,9 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f)
 {
+
+  thread_current()->t_esp = f->esp;
+  
   if(!validate_ptr(f->esp, 1)) {
     exit(-1);
   }
@@ -132,12 +135,13 @@ put_user (uint8_t *udst, const uint8_t byte)
 
 static bool
 validate_ptr(const void* ptr, int spanSize) {
-  
   if(ptr >= PHYS_BASE) {
     exit(-1);
   }
 
   if(get_user(ptr) != -1) {
+    return true;
+    /*
     // the read was valid
     if(get_user((uint8_t*)(ptr + spanSize - 1)) != -1){
       // both ends are fine maybe leave it
@@ -145,9 +149,14 @@ validate_ptr(const void* ptr, int spanSize) {
       return true;
     }
     else {
-      // invalid read
+      for(int i = 0; i < spanSize; i++) {
+	if(get_user(ptr+i) == -1) {
+	  exit(-1);
+	}
+      }
       exit(-1);      
     }
+    */
   }
   else {
     // invalid read

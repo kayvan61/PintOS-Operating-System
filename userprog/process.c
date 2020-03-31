@@ -515,57 +515,50 @@ setup_stack (void **esp, char* f_name)
   char**  argvLocation;
 
   log(L_TRACE, "setup_stack()");
+  
+  SupPageEntry* currentSPTE = createSupPageEntry(PHYS_BASE - 4096, 0, 4096, thread_current()->tid, NULL, 0, 1);
+  thread_add_SPTE(currentSPTE);
+  
+  for (currentToken = strtok_r (f_name, " ", &saveptr); currentToken != NULL;
+       currentToken = strtok_r (NULL, " ", &saveptr)) {
+    strlcpy(argv[argc], currentToken, MAX_ARG_LEN);
+    argc++;
+  }
+          
+  *esp = PHYS_BASE;
 
-  kpage = get_free_frame();
-  if (kpage != NULL)
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success) {
-          for (currentToken = strtok_r (f_name, " ", &saveptr); currentToken != NULL;
-               currentToken = strtok_r (NULL, " ", &saveptr)) {
-              strlcpy(argv[argc], currentToken, MAX_ARG_LEN);
-              argc++;
-          }
+  // copy the arguments into the stack 
           
-          *esp = PHYS_BASE;
+  for(int i = argc-1; i >= 0; i--) {
+    sizeOfCurArg = strlen(argv[i]);
+    *esp = *esp - (sizeOfCurArg + 1);
 
-          // copy the arguments into the stack 
+    strlcpy(*esp, argv[i], sizeOfCurArg+1);
+    pushedArgs[i] = *esp;              
+  }
           
-          for(int i = argc-1; i >= 0; i--) {
-              sizeOfCurArg = strlen(argv[i]);
-              *esp = *esp - (sizeOfCurArg + 1);
-
-              strlcpy(*esp, argv[i], sizeOfCurArg+1);
-              pushedArgs[i] = *esp;              
-          }
+  // align
+  if((((unsigned long)*esp) % 4) != 0) {
+    *esp -= ((unsigned long)*esp % 4);              
+  }
           
-          // align
-          if((((unsigned long)*esp) % 4) != 0) {
-              *esp -= ((unsigned long)*esp % 4);              
-          }
+  // populate argv with the pointers
+  *esp -= 4;
+  *(int32_t*)*esp = 0;
+  for(int i = argc-1; i >= 0 ; i--) {
+    *esp -= 4;
+    *(char**)*esp = pushedArgs[i];
+  }
+  argvLocation = *esp;
           
-          // populate argv with the pointers
-          *esp -= 4;
-          *(int32_t*)*esp = 0;
-          for(int i = argc-1; i >= 0 ; i--) {
-              *esp -= 4;
-              *(char**)*esp = pushedArgs[i];
-          }
-          argvLocation = *esp;
-          
-          // put argv and argc and return addr on the stack
-          *esp -= 4;
-          *(char***)*esp = argvLocation;
-          *esp -= 4;
-          *((int32_t*)(*esp)) = argc;
-          *esp -= 4;
-          *(int32_t*)*esp = 0;                    
-      }
-      else {
-        free_user_frame (kpage);
-      }
-    }
-  return success;
+  // put argv and argc and return addr on the stack
+  *esp -= 4;
+  *(char***)*esp = argvLocation;
+  *esp -= 4;
+  *((int32_t*)(*esp)) = argc;
+  *esp -= 4;
+  *(int32_t*)*esp = 0;                    
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

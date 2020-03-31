@@ -6,6 +6,7 @@
 #define VM_SWAP_H
 
 #include <hash.h>
+#include "vm/page.h"
 
 typedef struct {
 
@@ -31,6 +32,6 @@ int putPageIntoSwap(void *kpage);
    This assumes that the frame passed in is a free frame
    This is called by the evitction policy to try and swap a page in
  */
-int getPageFromSwap(int tid, void* upage, void* kpage);
+void* getPageFromSwap(SupPageEntry* SPTE, void* kpage);
 
 #endif

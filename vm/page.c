@@ -13,8 +13,12 @@ SupPageEntry* createSupPageEntry(void* upage, int zBytes, int rBytes, int tid, s
   
   SPTE->readBytes = rBytes;
   SPTE->zeroBytes = zBytes;
-  
-  SPTE->location = DISK;
+
+  if(f == NULL) {
+    SPTE->location = ZERO;
+  } else {
+    SPTE->location = DISK;
+  }
   SPTE->tid = tid;
 
   SPTE->isWritable = wr;

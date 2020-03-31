@@ -4,10 +4,14 @@
 #include <debug.h>
 #include "devices/block.h"
 #include "threads/malloc.h"
+#include "threads/vaddr.h"
+#include "userprog/exception.h"
 
-struct bitmap* swap_used_vector;
-struct block* swapBlock;
-struct hash swapTable;
+#define SECTORS_PER_PAGE PGSIZE / BLOCK_SECTOR_SIZE
+
+static struct bitmap* swap_used_vector;
+static struct block* swapBlock;
+static struct hash swapTable;
 
 unsigned swapHash(const struct hash_elem *p_, void* aux);
 bool swapLess(const struct hash_elem *a_, const struct hash_elem *b_, void* aux);
@@ -29,7 +33,7 @@ void swapInit() {
   If swap is full then we panick the Kernel  
  */
 int putPageIntoSwap(void *kpage) {
-
+  
   SwapTableEntry* potentialSTE = malloc(sizeof(SwapTableEntry));
   
   // find index of first free table
@@ -41,7 +45,8 @@ int putPageIntoSwap(void *kpage) {
   
   struct hash_elem *e = hash_find(&swapTable, &potentialSTE->hashElem);
   ASSERT(e == NULL);
-  
+
+  // update the Swap PTE
   UserFrameTableEntry* frameEntry = frame_find_userframe_entry(kpage);
   potentialSTE->owner_tid = frameEntry->owner_tid;
   potentialSTE->upage = frameEntry->page_ptr;
@@ -52,42 +57,42 @@ int putPageIntoSwap(void *kpage) {
 
   // each frame is 8 sectors large. write them into swap sequentially
   unsigned int kpageOff = 0;
-  for(unsigned int i = index_of_free_swap*8; i < index_of_free_swap*8 + 8; i++, kpageOff += 512) {
-    block_write (swapBlock, i, (char*)kpage + kpageOff);
+  for(unsigned int i = 0; i < SECTORS_PER_PAGE; i++, kpageOff += BLOCK_SECTOR_SIZE) {
+    block_write (swapBlock,
+		 potentialSTE->index*SECTORS_PER_PAGE + i,
+		 (char*)kpage + kpageOff);
   }
   
-  return 1;
+  return index_of_free_swap;
 }
 
 /* 
-   get the page that belongs to tid and contains address upage and put it 
-   into a free frame
-   This assumes that the frame passed in is a free frame
-   This assumes the frame is actually in swap
-   This is called by the evitction policy to try and swap a page in
+   get the page that belongs SPTE and put it into a free frame
+   This assumes the page is actually in swap
  */
-int getPageFromSwap(int tid, void* upage, void* kpage) {
+void* getPageFromSwap(SupPageEntry* SPTE, void* kpage) {
 
-  // get the frame and read our frame out
+  ASSERT(SPTE->location == SWAP);
 
-  // find the frame in the swap list
-  struct hash_iterator i;
-  SwapTableEntry *f;
-  hash_first (&i, &swapTable);
-  while (hash_next (&i)){
-    f = hash_entry (hash_cur (&i), SwapTableEntry, hashElem);
-    if(f->owner_tid == tid && f->upage == upage) {
-      break;
-    }
+  // each frame is 8 sectors large. read them out of swap one by one
+  unsigned int kpageOff = 0;
+  for(unsigned int i = 0; i < SECTORS_PER_PAGE; i++, kpageOff += BLOCK_SECTOR_SIZE) {
+    block_read (swapBlock,
+		 SPTE->locationInSwap*SECTORS_PER_PAGE + i,
+		 (char*)kpage + kpageOff);
   }
 
-  // each frame is 8 sectors large. read them out of swap one by one  
-  unsigned int kpageOff = 0;
-  for(unsigned int i = f->index*8; i < f->index*8 + 8; i++, kpageOff += 512) {
-    block_read (swapBlock, i, (char*)kpage + kpageOff);
-  } 
-    
-  return 0;
+  SwapTableEntry scratch;
+  scratch.index = SPTE->locationInSwap;
+  struct hash_elem* e = hash_find(&swapTable, &scratch.hashElem);
+  SwapTableEntry *curSTE = hash_entry(e, SwapTableEntry, hashElem);
+  
+  bitmap_set(swap_used_vector, SPTE->locationInSwap, 0);
+  hash_delete(&swapTable, &curSTE->hashElem);
+
+  free(curSTE);
+  
+  return kpage;
 }
 
 

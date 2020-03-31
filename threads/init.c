@@ -23,6 +23,7 @@
 #include "threads/pte.h"
 #include "threads/thread.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -114,8 +115,6 @@ main (void)
   syscall_init ();
 #endif
 
-  frame_alloc_init ();
-
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
   serial_init_queue ();
@@ -127,6 +126,9 @@ main (void)
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
+
+  frame_alloc_init();
+  swapInit();
 
   printf ("Boot complete.\n");
 
