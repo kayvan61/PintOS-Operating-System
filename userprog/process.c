@@ -150,6 +150,15 @@ process_wait (tid_t child_tid)
   return -1;
 }
 
+void supFree (struct hash_elem *e, void *aux) {
+  struct thread* t = (struct thread*)(aux);
+  SupPageEntry *w = hash_entry(e, SupPageEntry, hashElem);
+  if(w->location == MEM)  {
+    pagedir_clear_page (t->pagedir, w->pageStart);
+    free_user_frame(w->currentFrame);
+  }
+}
+
 /* Free the current process's resources. */
 void
 process_exit (void)
@@ -159,6 +168,9 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  cur->SPageTable.aux = cur;
+  hash_destroy (&cur->SPageTable, &supFree);
+  
   pd = cur->pagedir;
   if (pd != NULL)
     {

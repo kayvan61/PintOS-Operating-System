@@ -133,7 +133,8 @@ void frame_table_update(int tid, void* frame_ptr, void* user_v_addr, void* o_pd)
   FTE->owner_tid = tid; 
 }
 
-void free_user_frame(void* kFrame) {  
+void free_user_frame(void* kFrame) {
+  
   kFrame   = (void*)((unsigned int)kFrame & 0xFFFFF000);
 
   UserFrameTableEntry scratch;
@@ -143,6 +144,8 @@ void free_user_frame(void* kFrame) {
     PANIC("tried to free a frame that doesnt exist");
   }
   UserFrameTableEntry* FTE = hash_entry(p, UserFrameTableEntry, hashElem);
+
+  ASSERT(FTE->owner_tid == thread_current()->tid);
   
   FTE->page_ptr = NULL;
   FTE->owner_pd = NULL;
@@ -186,33 +189,11 @@ void updatePageForSwap(SupPageEntry* spte, int toDisk) {
     }
   } else {
     spte->locationInSwap = putPageIntoSwap(spte->currentFrame);
+    pagedir_set_dirty(frame_find_userframe_entry(spte->currentFrame)->owner_pd, spte->pageStart, 0);
     // update the SPTE to note that its no longer present (now in swap)
     spte->location = SWAP;
   }
   spte->currentFrame = NULL;
-}
-
-void iterateAllIndex() {
-  /*
-  struct hash_iterator i;
-
-  UserFrameTableEntry *f;
-  
-  hash_first (&i, &all_frame_index);
-  while (hash_next (&i))
-  {
-    f = hash_entry (hash_cur (&i), UserFrameTableEntry, indexElem);	  
-  }
-  */
-  UserFrameTableEntry scratch;
-  UserFrameTableEntry *pp;
-  struct hash_elem *p;
-
-  for(int i = 0; i < TOTAL_NUM_FRAMES; i++) {
-    scratch.index = i;
-    p = hash_find(&all_frame_index, &scratch.indexElem);
-    pp = hash_entry (p, UserFrameTableEntry, indexElem);
-  }
 }
 
 void* evict_frame() {
