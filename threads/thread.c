@@ -244,8 +244,19 @@ void thread_add_SPTE(SupPageEntry* spte) {
   hash_insert(&t->SPageTable, &spte->hashElem);
 }
 
-SupPageEntry* thread_get_SPTE(void* upage) {
-  struct thread* t = thread_current();
+SupPageEntry* thread_get_SPTE(void* upage, tid_t tid) {
+  struct thread* t = NULL;
+  ASSERT(tid != -1);
+  if(tid == 0) {
+    t = thread_current();
+  }
+  else {
+    enum intr_level prev = intr_set_level(INTR_OFF);
+    t = thread_get_thread_by_tid(tid);
+    intr_set_level(prev);
+  }
+
+  ASSERT(t != NULL);
   
   SupPageEntry scratchSPTE;
   scratchSPTE.pageStart = (uint32_t)upage & 0xFFFFF000;

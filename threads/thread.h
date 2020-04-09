@@ -179,7 +179,7 @@ int thread_add_fd(struct file*);
 void thread_remove_fd(int);
 
 void thread_add_SPTE(SupPageEntry* spte);
-SupPageEntry* thread_get_SPTE(void* upage);
+SupPageEntry* thread_get_SPTE(void* upage, tid_t);
 
 struct thread* thread_get_thread_by_tid(tid_t);
 

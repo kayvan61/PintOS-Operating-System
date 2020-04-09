@@ -192,11 +192,11 @@ page_fault (struct intr_frame *f)
   const void* stackTop = PHYS_BASE - MAX_STACK_SIZE;
   const void* stackBot = PHYS_BASE;
   
-  SupPageEntry* SPTE = thread_get_SPTE(fault_addr);
-  void* esp;
+  SupPageEntry* SPTE = thread_get_SPTE(fault_addr, t->tid);
+  void* esp = NULL;
   int isInStackFrame;
   int isValidStackAddr;
-  void* new_free_frame = get_free_frame();
+  void* new_free_frame = NULL;
   int writable = 1;
   
   if(user)
@@ -211,11 +211,14 @@ page_fault (struct intr_frame *f)
     // grow the stack
     // if no page for it exists create one and install it
     if(SPTE == NULL) {
-      SPTE = createSupPageEntry((void*)((uint32_t)fault_addr & 0xFFFFF000), 0, 4096, thread_current()->tid, NULL, 0, 1);      
+      SPTE = createSupPageEntry((void*)((uint32_t)fault_addr & 0xFFFFF000), 0, 4096, thread_current()->tid, NULL, 0, 1);
+      thread_add_SPTE(SPTE);
+      new_free_frame = get_free_frame();
+    } else {
+      new_free_frame = get_free_frame();
     }
   }
-  else {
-
+  else {    
     // its not a stack growing fault.
     if(SPTE == NULL) {
       if(!user && !not_present) {
@@ -225,6 +228,8 @@ page_fault (struct intr_frame *f)
       }
       exit(-1);
     }
+
+    new_free_frame = get_free_frame();
     
     writable = SPTE->isWritable;
     // the SPTE exists so this is probably a segment of code or something thats in swap
@@ -268,6 +273,9 @@ page_fault (struct intr_frame *f)
 
 static int install_page (void *upage, void *kpage, SupPageEntry* SPTE, int writable)
 {
+  ASSERT(kpage != NULL);
+  ASSERT(upage != NULL);
+  ASSERT(SPTE != NULL);
   struct thread *t = thread_current ();
 
   /* Verify that there's not already a page at that virtual

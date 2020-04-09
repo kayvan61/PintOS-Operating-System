@@ -8,9 +8,11 @@
 #include "threads/init.h"
 #include "lib/syscall-nr.h"
 #include "userprog/process.h"
+#include "userprog/pagedir.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
 #include "filesys/filesys.h"
+#include "vm/frame.h"
 
 static void syscall_handler (struct intr_frame *);
 static bool validate_ptr(const void* ptr, int spanSize);
@@ -22,6 +24,16 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&file_system_lock);
+}
+
+static void set_page_to_dirty(void* upage) {
+  upage = (void*)((unsigned int)upage & 0xFFFFF000);
+  pagedir_set_dirty(thread_current()->pagedir, upage, 1);
+}
+
+static void set_page_to_accessed(void* upage) {
+  upage = (void*)((unsigned int)upage & 0xFFFFF000);
+  pagedir_set_accessed(thread_current()->pagedir, upage, 1);
 }
 
 static void
@@ -140,23 +152,15 @@ validate_ptr(const void* ptr, int spanSize) {
   }
 
   if(get_user(ptr) != -1) {
-    return true;
-    /*
-    // the read was valid
-    if(get_user((uint8_t*)(ptr + spanSize - 1)) != -1){
-      // both ends are fine maybe leave it
-      // if a test case fails implement linear buffer check?
-      return true;
-    }
-    else {
-      for(int i = 0; i < spanSize; i++) {
-	if(get_user(ptr+i) == -1) {
-	  exit(-1);
-	}
+      // the read was valid
+      if(get_user((uint8_t*)(ptr + spanSize - 1)) != -1){
+	// both ends are fine maybe leave it
+	// if a test case fails implement linear buffer check?
+	return true;
       }
-      exit(-1);      
-    }
-    */
+      else {
+	exit(-1);      
+      }
   }
   else {
     // invalid read
@@ -359,6 +363,8 @@ int filesize (int fd) {
    Fd 0 reads from the keyboard using input_getc(). */
 
 int read (int fd, void *buffer, unsigned size) {
+  set_page_to_accessed(buffer);
+  set_page_to_dirty(buffer);
   if(fd == 0) {
     // sysin
     unsigned int indexOfBuffer = 0;
@@ -387,9 +393,18 @@ int read (int fd, void *buffer, unsigned size) {
   int ret = -1;
   lock_acquire(&file_system_lock);
   if(fileToRead != NULL && !fileToRead->deny_write) {
-    ret = file_read(fileToRead, buffer, size);
+    struct thread* t = thread_current();
+    void* bufferEnd = (buffer + size);
+    for(void* i = (void*)((uint32_t)buffer & 0xFFFFF000); i <= bufferEnd; i += 4096 ) {
+      pin_page(i, t->tid);
+    }
+    ret = file_read(fileToRead, buffer, size);    
+    for(void* i = (void*)((uint32_t)buffer & 0xFFFFF000); i <= bufferEnd; i += 4096 ) {
+      unpin_page(i, t->tid);
+    }
   }
   lock_release(&file_system_lock);
+  
   return ret;
 }
 
@@ -404,6 +419,7 @@ int read (int fd, void *buffer, unsigned size) {
    (It is reasonable to break up larger buffers.) Otherwise, lines of text output by different processes may end up interleaved on the console, confusing both human readers and our grading scripts. */
 
 int write (int fd, const void *buffer, unsigned size) {
+  set_page_to_accessed(buffer);
   if(fd == 1) {
     putbuf(buffer, size);
     return size;

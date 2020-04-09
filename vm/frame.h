@@ -40,4 +40,7 @@ UserFrameTableEntry* frame_find_userframe_entry(void* framePtr);
 
 void* evict_frame(void);
 
+void pin_page(void* upage, int);
+void unpin_page(void* upage, int);
+
 #endif

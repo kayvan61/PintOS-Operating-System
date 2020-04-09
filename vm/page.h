@@ -28,6 +28,7 @@ typedef struct {
   
   enum PageLocation location;
   int tid;
+  int flags;
 } SupPageEntry;
 
 SupPageEntry* findSupPageEntry(void* upage);

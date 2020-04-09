@@ -6,12 +6,14 @@
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "userprog/exception.h"
+#include "threads/synch.h"
 
 #define SECTORS_PER_PAGE PGSIZE / BLOCK_SECTOR_SIZE
 
 static struct bitmap* swap_used_vector;
 static struct block* swapBlock;
 static struct hash swapTable;
+static struct lock swap_lock; 
 
 unsigned swapHash(const struct hash_elem *p_, void* aux);
 bool swapLess(const struct hash_elem *a_, const struct hash_elem *b_, void* aux);
@@ -25,6 +27,8 @@ void swapInit() {
 
   // table to keep track of swap table entries
   hash_init(&swapTable, swapHash, swapLess, NULL);
+
+  lock_init(&swap_lock);
 }
 
 
@@ -33,7 +37,9 @@ void swapInit() {
   If swap is full then we panick the Kernel  
  */
 int putPageIntoSwap(void *kpage) {
-  
+  if (bitmap_all(swap_used_vector, 0, block_size(swapBlock) / 8)) {
+    PANIC("SWAP is full");
+  }
   SwapTableEntry* potentialSTE = malloc(sizeof(SwapTableEntry));
   
   // find index of first free table
@@ -56,13 +62,14 @@ int putPageIntoSwap(void *kpage) {
   bitmap_set(swap_used_vector, index_of_free_swap, 1);
 
   // each frame is 8 sectors large. write them into swap sequentially
+  lock_acquire(&swap_lock);
   unsigned int kpageOff = 0;
   for(unsigned int i = 0; i < SECTORS_PER_PAGE; i++, kpageOff += BLOCK_SECTOR_SIZE) {
     block_write (swapBlock,
 		 potentialSTE->index*SECTORS_PER_PAGE + i,
 		 (char*)kpage + kpageOff);
   }
-  
+  lock_release(&swap_lock);
   return index_of_free_swap;
 }
 
@@ -75,13 +82,15 @@ void* getPageFromSwap(SupPageEntry* SPTE, void* kpage) {
   ASSERT(SPTE->location == SWAP);
 
   // each frame is 8 sectors large. read them out of swap one by one
+  lock_acquire(&swap_lock);
   unsigned int kpageOff = 0;
   for(unsigned int i = 0; i < SECTORS_PER_PAGE; i++, kpageOff += BLOCK_SECTOR_SIZE) {
     block_read (swapBlock,
 		 SPTE->locationInSwap*SECTORS_PER_PAGE + i,
 		 (char*)kpage + kpageOff);
   }
-
+  lock_release(&swap_lock);
+  
   SwapTableEntry scratch;
   scratch.index = SPTE->locationInSwap;
   struct hash_elem* e = hash_find(&swapTable, &scratch.hashElem);

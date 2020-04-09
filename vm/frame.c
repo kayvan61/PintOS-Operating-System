@@ -2,6 +2,7 @@
 #include "vm/swap.h"
 #include "vm/page.h"
 #include <bitmap.h>
+#include "threads/synch.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
@@ -10,12 +11,15 @@
 
 #define IS_DIRTY(x)    (x & 1)
 #define WAS_ACC(x)     (x & 2)
+#define IS_PINNED(x)   (x & 4)
 
 #define SET_DIRTY(x)    x = (x | 1)
 #define SET_ACC(x)      x = (x | 2)
+#define SET_PINNED(x)   x = (x | 4)
 
 #define CLEAR_DIRTY(x)    x = (x & ~1)
 #define CLEAR_ACC(x)      x = (x & ~2)
+#define CLEAR_PINNED(x)   x = (x & ~4)
 
 static struct bitmap* frame_used_vector;
 
@@ -23,6 +27,8 @@ static struct hash all_frame_list;
 static struct hash all_frame_index;
 
 static int clockHand;
+
+struct lock get_frame_lock;
 
 int TOTAL_NUM_FRAMES = 0;
 
@@ -84,13 +90,19 @@ void frame_alloc_init() {
   frame_used_vector = bitmap_create(TOTAL_NUM_FRAMES);
   bitmap_set_all(frame_used_vector, 0);
 
+  lock_init(&get_frame_lock);
+  
   clockHand = 0;
 }
 
 void* get_free_frame() {
+  lock_acquire(&get_frame_lock);
   // all frames are 1 (used)
   if(bitmap_all(frame_used_vector, 0, TOTAL_NUM_FRAMES)) {
-    return evict_frame();
+    void* res = evict_frame();
+    if(res != NULL) {
+      return res;
+    }
   }  
   
   UserFrameTableEntry scratch;
@@ -109,7 +121,7 @@ void* get_free_frame() {
   ASSERT(FTE->owner_tid == -1);
 
   bitmap_set(frame_used_vector, frame_index, 1);
-  
+
   return FTE->frame_ptr;
 }
 
@@ -130,11 +142,12 @@ void frame_table_update(int tid, void* frame_ptr, void* user_v_addr, void* o_pd)
   
   FTE->page_ptr = user_v_addr;
   FTE->owner_pd = o_pd;
-  FTE->owner_tid = tid; 
+  FTE->owner_tid = tid;
+  lock_release(&get_frame_lock);
 }
 
 void free_user_frame(void* kFrame) {
-  
+  lock_acquire(&get_frame_lock);
   kFrame   = (void*)((unsigned int)kFrame & 0xFFFFF000);
 
   UserFrameTableEntry scratch;
@@ -152,6 +165,7 @@ void free_user_frame(void* kFrame) {
   FTE->owner_tid = -1;
 
   bitmap_set(frame_used_vector, FTE->index, 0);
+  lock_release(&get_frame_lock);
 }
 
 UserFrameTableEntry* frame_find_userframe_entry(void* framePtr) {
@@ -171,6 +185,7 @@ void advanceClockHand(void) {
 void updateFrameForSwap(UserFrameTableEntry *pfe) {    
   pagedir_clear_page (pfe->owner_pd, pfe->page_ptr);
   // update the frame info
+  ASSERT(!(IS_PINNED(pfe->extra_flags)))
   pfe->page_ptr = NULL;
   pfe->owner_tid = -1;
   pfe->extra_flags = 0;
@@ -178,7 +193,6 @@ void updateFrameForSwap(UserFrameTableEntry *pfe) {
 }
 
 void updatePageForSwap(SupPageEntry* spte, int toDisk) {
-  toDisk = 0;
   if(toDisk) {
     // update the SPTE to note that its no longer present (now on disk)
     if(spte->locationOnDisk == NULL) {
@@ -189,7 +203,6 @@ void updatePageForSwap(SupPageEntry* spte, int toDisk) {
     }
   } else {
     spte->locationInSwap = putPageIntoSwap(spte->currentFrame);
-    pagedir_set_dirty(frame_find_userframe_entry(spte->currentFrame)->owner_pd, spte->pageStart, 0);
     // update the SPTE to note that its no longer present (now in swap)
     spte->location = SWAP;
   }
@@ -200,8 +213,6 @@ void* evict_frame() {
   // clock replacement algo
 
   //iterateAllIndex();
-  
-  ASSERT(bitmap_all(frame_used_vector, 0, TOTAL_NUM_FRAMES));
   
   int first_elem = clockHand;
   int cur_elem   = first_elem;
@@ -222,16 +233,22 @@ void* evict_frame() {
     }
     
     UserFrameTableEntry *pfe = hash_entry (p, UserFrameTableEntry, indexElem);
+    SupPageEntry* SPTE = thread_get_SPTE(pfe->page_ptr, pfe->owner_tid);
+    ASSERT(SPTE != NULL);
     if(!pagedir_is_accessed(pfe->owner_pd, pfe->page_ptr)) {
-      if(!pagedir_is_dirty(pfe->owner_pd, pfe->page_ptr)) {
-	// found a page that is both unaccessed and not dirty
-	// prime candidate for swaping out	
-	updatePageForSwap(thread_get_SPTE(pfe->page_ptr), 1);
-	updateFrameForSwap(pfe);
-	// advance the clock hand for next eviction
-	advanceClockHand();
-	// make sure to return the frame pointer here too	
-	return pfe->frame_ptr;
+      if(!pagedir_is_dirty(pfe->owner_pd, pfe->page_ptr) && !IS_DIRTY(SPTE->flags)) {
+	if(!IS_PINNED(pfe->extra_flags)) {
+	  // found a page that is both unaccessed and not dirty
+	  // prime candidate for swaping out	
+	  updatePageForSwap(SPTE, 1);
+	  updateFrameForSwap(pfe);
+	  // advance the clock hand for next eviction
+	  advanceClockHand();
+	  // make sure to return the frame pointer here too
+	  return pfe->frame_ptr;
+	}
+      } else {
+	SET_DIRTY(SPTE->flags);
       }
     }
     else {
@@ -254,23 +271,26 @@ void* evict_frame() {
     scratch.index = cur_elem;
     struct hash_elem *p = hash_find(&all_frame_index, &scratch.indexElem);
     if(p == NULL) {
-      PANIC("clock hand points to a frame that doesnt exist .");
+      PANIC("clock hand points to a frame that doesnt exist.");
     }
 
     UserFrameTableEntry *pfe = hash_entry (p, UserFrameTableEntry, indexElem);
+    SupPageEntry* SPTE = thread_get_SPTE(pfe->page_ptr, pfe->owner_tid);
+    ASSERT(SPTE != NULL)
     if(!WAS_ACC(pfe->extra_flags)) {
-      // found a page that was unaccessed but dirty
-      // it was dirty tho so put it into swap
-      
-      updatePageForSwap(thread_get_SPTE(pfe->page_ptr), 0);          
-      // update the frame info
-      updateFrameForSwap(pfe);
-
-      // advance the clock hand for next eviction
-      advanceClockHand();
-      
-      // make sure to return the frame pointer here too
-      return pfe->frame_ptr;
+      if(!IS_PINNED(pfe->extra_flags)) {
+	// found a page that was unaccessed but dirty
+	// it was dirty tho so put it into swap
+	updatePageForSwap(SPTE, 0);          
+	// update the frame info
+	updateFrameForSwap(pfe);
+	
+	// advance the clock hand for next eviction
+	advanceClockHand();
+	
+	// make sure to return the frame pointer here too
+	return pfe->frame_ptr;
+      }
     }
 
     cur_elem++;
@@ -284,12 +304,58 @@ void* evict_frame() {
   scratch.index = clockHand;
   struct hash_elem *p = hash_find(&all_frame_index, &scratch.indexElem);
   if(p == NULL) {
-    PANIC("clock hand points to a frame that doesnt exist .");
+    PANIC("clock hand points to a frame that doesnt exist.");
   }
-  UserFrameTableEntry *pfe = hash_entry (p, UserFrameTableEntry, indexElem); 
-  updatePageForSwap(thread_get_SPTE(pfe->page_ptr), 0);
+  UserFrameTableEntry *pfe = hash_entry (p, UserFrameTableEntry, indexElem);
+  while(IS_PINNED(pfe->extra_flags)) {
+    advanceClockHand();
+    scratch.index = clockHand;
+    p = hash_find(&all_frame_index, &scratch.indexElem);
+    if(p == NULL) {
+      PANIC("clock hand points to a frame that doesnt exist.");
+    }
+    pfe = hash_entry (p, UserFrameTableEntry, indexElem);
+  }
+  SupPageEntry* SPTE = thread_get_SPTE(pfe->page_ptr, pfe->owner_tid);
+  ASSERT(SPTE != NULL);
+  updatePageForSwap(SPTE, 0);
   // update the frame info
   updateFrameForSwap(pfe);
   advanceClockHand();
   return pfe->frame_ptr;
+}
+
+void pin_page(void* upage, int tid) {
+  // load page in using pageFault handler
+  volatile int temp = *(int*)upage;
+  enum intr_level prev = intr_set_level(INTR_OFF);
+  struct hash_iterator i;
+  
+  hash_first (&i, &all_frame_index);
+  while (hash_next (&i)) {
+    UserFrameTableEntry *pfe = hash_entry (hash_cur(&i), UserFrameTableEntry, indexElem);
+    if(pfe->page_ptr == upage && pfe->owner_tid == tid) {
+      SET_PINNED(pfe->extra_flags);
+      intr_set_level(prev);
+      return;
+    }
+  }
+  PANIC("Tried to pin a user page that wasnt loaded yet.");
+}
+
+void unpin_page(void* upage, int tid) {
+  // load page in using pageFault handler
+  enum intr_level prev = intr_set_level(INTR_OFF);
+  struct hash_iterator i;
+  
+  hash_first (&i, &all_frame_index);
+  while (hash_next (&i)) {
+    UserFrameTableEntry *pfe = hash_entry (hash_cur(&i), UserFrameTableEntry, indexElem);
+    if(pfe->page_ptr == upage && pfe->owner_tid == tid) {
+      CLEAR_PINNED(pfe->extra_flags);
+      intr_set_level(prev);
+      return;
+    }
+  }
+  PANIC("Tried to unpin a user page that wasnt loaded/pinned yet.");
 }
