@@ -152,15 +152,7 @@ validate_ptr(const void* ptr, int spanSize) {
   }
 
   if(get_user(ptr) != -1) {
-      // the read was valid
-      if(get_user((uint8_t*)(ptr + spanSize - 1)) != -1){
-	// both ends are fine maybe leave it
-	// if a test case fails implement linear buffer check?
-	return true;
-      }
-      else {
-	exit(-1);      
-      }
+    return true;
   }
   else {
     // invalid read

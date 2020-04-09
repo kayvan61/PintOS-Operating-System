@@ -168,6 +168,26 @@ void free_user_frame(void* kFrame) {
   lock_release(&get_frame_lock);
 }
 
+void free_user_frame_force(void* kFrame) {
+  kFrame   = (void*)((unsigned int)kFrame & 0xFFFFF000);
+
+  UserFrameTableEntry scratch;
+  scratch.frame_ptr = kFrame;
+  struct hash_elem *p = hash_find(&all_frame_list, &scratch.hashElem);
+  if(p == NULL) {
+    PANIC("tried to free a frame that doesnt exist");
+  }
+  UserFrameTableEntry* FTE = hash_entry(p, UserFrameTableEntry, hashElem);
+
+  ASSERT(FTE->owner_tid == thread_current()->tid);
+  
+  FTE->page_ptr = NULL;
+  FTE->owner_pd = NULL;
+  FTE->owner_tid = -1;
+
+  bitmap_set(frame_used_vector, FTE->index, 0);
+}
+
 UserFrameTableEntry* frame_find_userframe_entry(void* framePtr) {
   UserFrameTableEntry scratch;
   scratch.frame_ptr = (void*)(((uint32_t)framePtr) & 0xFFFFF000);
@@ -234,7 +254,9 @@ void* evict_frame() {
     
     UserFrameTableEntry *pfe = hash_entry (p, UserFrameTableEntry, indexElem);
     SupPageEntry* SPTE = thread_get_SPTE(pfe->page_ptr, pfe->owner_tid);
-    ASSERT(SPTE != NULL);
+    if(SPTE == NULL) {
+      return NULL;
+    }
     if(!pagedir_is_accessed(pfe->owner_pd, pfe->page_ptr)) {
       if(!pagedir_is_dirty(pfe->owner_pd, pfe->page_ptr) && !IS_DIRTY(SPTE->flags)) {
 	if(!IS_PINNED(pfe->extra_flags)) {

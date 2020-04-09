@@ -155,7 +155,7 @@ void supFree (struct hash_elem *e, void *aux) {
   SupPageEntry *w = hash_entry(e, SupPageEntry, hashElem);
   if(w->location == MEM)  {
     pagedir_clear_page (t->pagedir, w->pageStart);
-    free_user_frame(w->currentFrame);
+    free_user_frame_force(w->currentFrame);
   }
 }
 
@@ -168,8 +168,10 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  enum intr_level prev = intr_set_level(INTR_OFF);
   cur->SPageTable.aux = cur;
   hash_destroy (&cur->SPageTable, &supFree);
+  intr_set_level(prev);
   
   pd = cur->pagedir;
   if (pd != NULL)

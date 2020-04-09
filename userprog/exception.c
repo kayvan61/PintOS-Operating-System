@@ -197,6 +197,7 @@ page_fault (struct intr_frame *f)
   int isInStackFrame;
   int isValidStackAddr;
   void* new_free_frame = NULL;
+  new_free_frame = get_free_frame();
   int writable = 1;
   
   if(user)
@@ -213,23 +214,18 @@ page_fault (struct intr_frame *f)
     if(SPTE == NULL) {
       SPTE = createSupPageEntry((void*)((uint32_t)fault_addr & 0xFFFFF000), 0, 4096, thread_current()->tid, NULL, 0, 1);
       thread_add_SPTE(SPTE);
-      new_free_frame = get_free_frame();
-    } else {
-      new_free_frame = get_free_frame();
     }
   }
   else {    
     // its not a stack growing fault.
     if(SPTE == NULL) {
-      if(!user && !not_present) {
+      if(!user) {
 	f->eip = (void (*)(void))f->eax;
 	f->eax = 0xffffffff;
 	return;
       }
       exit(-1);
     }
-
-    new_free_frame = get_free_frame();
     
     writable = SPTE->isWritable;
     // the SPTE exists so this is probably a segment of code or something thats in swap
@@ -284,9 +280,9 @@ static int install_page (void *upage, void *kpage, SupPageEntry* SPTE, int writa
 
   if(res) {
     ASSERT(t->pagedir != NULL);
-    frame_table_update(t->tid, kpage, upage, t->pagedir);
     SPTE->currentFrame = kpage;
     SPTE->location = MEM;
+    frame_table_update(t->tid, kpage, upage, t->pagedir);
   }
   
   return res;
