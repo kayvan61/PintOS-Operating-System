@@ -8,8 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Ali Mansoorshahi <kayvan.mansoor@utexas.edu>
+Utsha Khondkar <utsha.kh@utexas.edu>
 
 ---- PRELIMINARIES ----
 
@@ -29,20 +29,61 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+represents a suplimental page table entry. used for keeping track of where a page is.
+typedef struct {
+  struct hash_elem hashElem;
+  
+  void* pageStart;
+  void* currentFrame;
+
+  unsigned int locationInSwap;
+  struct file* locationOnDisk;
+  unsigned int offsetInDisk;
+  
+  unsigned int readBytes, zeroBytes;
+  int isWritable;
+  
+  enum PageLocation location;
+  int tid;
+  int flags;
+} SupPageEntry;
+
+represents a frame. stores information about the page currently in a frame.
+typedef struct {
+  void* page_ptr;
+  void* frame_ptr;
+  int owner_tid;
+  uint8_t extra_flags;
+  uint32_t *owner_pd;
+  int index;
+  
+  struct hash_elem hashElem;           /* List element for all frame list. */
+  struct hash_elem indexElem;
+  
+} UserFrameTableEntry;
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for locating the frame,
 >> if any, that contains the data of a given page.
+
+the supplimental page table entry contains the frame that the page is currently resident in. we simply search for the page in the
+current thread's supplimental page table.
 
 ---- SYNCHRONIZATION ----
 
 >> A3: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+the frame allocator is locked when a new frame is requested. when the frame table is updated with the information about that frame then
+the frame allocator is unlocked.
+
 ---- RATIONALE ----
 
 >> A4: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+
+It makes it easy to keep track of what is where at any time. pages can be easily located and frames can easily tell us what page they are holding.
 
                         PAGING TO AND FROM DISK
                         =======================
@@ -53,18 +94,43 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+This is used for keeping track of swap entries. represents a page in swap.
+typedef struct {
+
+  struct hash_elem hashElem;
+  
+  unsigned int index;
+  int owner_tid;
+  void* upage;
+  
+} SwapTableEntry;
+
+used for keeping track of a pages location. Zero means a page allocated to a frame was never used and didnt exist on disk (new stack page allocated but not dirtied) 
+enum PageLocation {SWAP, MEM, DISK, ZERO};
+
 ---- ALGORITHMS ----
 
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
+we first iterate through all frames looking for a frame that is both unacessed and not dirty. if we fail to find one we then look
+for a frame that is unacessed. if neither is found then we simply evict the clock hand. the clock hand advances everytime the eviction is ran.
+Every frame is set to unacessed whenever a frame is evicted. a frame is set to not-dirty if its been written back to disk (not swap).
+
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
+before the frame is evicted we update the page table entry for the current resident page with its new location (swap or disk or zero). we
+then update the frame table entry to show that it contains the new page. then the page table entry for the new page is updated to show that
+it is in memory.
+
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+if the fault occurs in kernel mode then we use the esp stored in the thread otherwise we use the esp passed into through the interupt frame. next we ensure that
+the fault address is 4 or 32 bytes away from the esp. finally if the fault address is within the maximum stack size it is considered a stack growing fault. 
 
 ---- SYNCHRONIZATION ----
 
@@ -73,21 +139,37 @@ FirstName LastName <email@utexas.edu>
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
 
+when a process requests a new frame there is a lock that is locked. while this is locked other processes cannot request
+frames or update the frame table. Once the process finishes getting and populating the frame and updating the frame table the lock
+is unlocked. This cannot cause deadlock since the process doesnt wait for another resource's lock. swapping only occurs after this lock is obtained so another
+process cannot have the swap lock (hold and wait condition). 
+
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
+
+the first step of eviting a frame is to remove it from the processes page directory. This will cause any acesses to that page to result in a fault.
+this fault will then try to get a frame which will result in waiting since P holds the frame allocator's lock during eviction. then P gets to run again finishing the swap.
+finally the frame allocator's lock is unlocked. then Q can fault the page back in if it needs to safely since the frame table is in a valid state.
+
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
 
+if a process is using the read syscall then the pages are first brought into memory and pinned.
+pinned pages cannot be removed from memory unless they are unpinned (which occurs right after the read is done).
+
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+
+the page fault handler will bring back frames that are paged-out during syscalls. These pages are then pinned so
+they arent removed if the syscall gets interupted by another process.
 
 ---- RATIONALE ----
 
@@ -97,6 +179,10 @@ FirstName LastName <email@utexas.edu>
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+
+We use a single lock for the whole VM system. while this limits parallelism we figured that it wouldnt be an issue
+as the device for swapping is limited to one process at a time. we want to ensure that obtaining frames and updating them occurs pseudo atomically
+so we use one lock for the whole system.
 
                            SURVEY QUESTIONS
                            ================
@@ -110,14 +196,24 @@ the semester.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+its was a good assignment.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+yes. working on the swap and frame allocator gave important insight.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
+nope.
+
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
 
+nope.
+
 >> Any other comments?
+
+nope.
