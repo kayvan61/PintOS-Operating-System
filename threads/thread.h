@@ -6,9 +6,21 @@
 #include <stdint.h>
 #include "synch.h"
 #include "filesys/file.h"
+#include "filesys/directory.h"
 #include "vm/page.h"
 #include <hash.h>
 
+/* Union to keep track of file descriptors */
+union FdPointer {
+  struct file* asFile;
+  struct dir*  asDir;
+};
+
+struct FdEntry {
+  union FdPointer ptr;
+  int isFile;
+};
+  
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -99,12 +111,15 @@ struct thread
 
     int returnCode;
 
+    /* threads current pwd */
+    struct dir* pwd;
+
     /* to deny writes during execution */
     struct file* selfOnDisk;
 
     /* fd table */
     bool isFdInit;
-    struct file **fdTable;
+    struct FdEntry **fdTable;
     int fdCount;
     int fdCap;
 
@@ -176,6 +191,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 int thread_add_fd(struct file*);
+int thread_add_dir(struct dir*);
 void thread_remove_fd(int);
 
 void thread_add_SPTE(SupPageEntry* spte);

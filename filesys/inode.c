@@ -48,7 +48,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, enum inode_type type)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -64,6 +64,7 @@ inode_create (block_sector_t sector, off_t length)
     {
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
+      disk_inode->type   = type;
       disk_inode->magic = INODE_MAGIC;
       if (free_map_allocate (sectors, &disk_inode->start))
         {

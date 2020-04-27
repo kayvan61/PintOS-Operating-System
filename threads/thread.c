@@ -224,7 +224,7 @@ thread_create (const char *name, int priority,
   sema_init(&t->childExecLock, 0);
 
   /* set up childs fdTable */
-  t->fdTable = malloc(sizeof(struct file*) * 1);
+  t->fdTable = malloc(sizeof(struct FdEntry*) * 1);
   t->fdTable[0] = NULL;
   t->fdCount = 0;
   t->fdCap = 1;
@@ -275,7 +275,7 @@ int thread_add_fd(struct file* newFilePtr) {
   struct thread* t = thread_current();
 
   if(!t->isFdInit) {
-    t->fdTable = malloc(sizeof(struct file*) * 1);
+    t->fdTable = malloc(sizeof(struct FdEntry*) * 1);
     t->fdTable[0] = NULL;
     t->fdCount = 0;
     t->fdCap = 1;
@@ -283,8 +283,10 @@ int thread_add_fd(struct file* newFilePtr) {
   }
 
   for(int i = 0; i < t->fdCap; i++) {
-    if(t->fdTable[i] == newFilePtr) {
-      return i;
+    if(t->fdTable[i] != NULL) {
+      if(t->fdTable[i]->ptr.asFile == newFilePtr) {
+	return i;
+      }
     }
   }
   
@@ -294,13 +296,57 @@ int thread_add_fd(struct file* newFilePtr) {
       break;
     }
   }
-  t->fdTable[ret] = newFilePtr;
+  t->fdTable[ret] = malloc(sizeof(struct FdEntry));
+  t->fdTable[ret]->ptr.asFile = newFilePtr;
+  t->fdTable[ret]->isFile = 1;
   t->fdCount++;
   
   if(t->fdCap == t->fdCount) {
     int oldCap = t->fdCap;
     t->fdCap *= 2;
-    t->fdTable = (struct file**)realloc(t->fdTable, sizeof(struct file*) * t->fdCap);
+    t->fdTable = (struct FdEntry**)realloc(t->fdTable, sizeof(struct FdEntry*) * t->fdCap);
+    for(int i = oldCap; i < t->fdCap; i++) {
+      t->fdTable[i] = NULL;
+    }
+  }
+  return ret;
+}
+
+int thread_add_dir(struct dir* newFilePtr) {
+  int ret = 0;
+  struct thread* t = thread_current();
+
+  if(!t->isFdInit) {
+    t->fdTable = malloc(sizeof(struct FdEntry*) * 1);
+    t->fdTable[0] = NULL;
+    t->fdCount = 0;
+    t->fdCap = 1;
+    t->isFdInit = true;
+  }
+
+  for(int i = 0; i < t->fdCap; i++) {
+    if(t->fdTable[i] != NULL) {
+      if(t->fdTable[i]->ptr.asFile == newFilePtr) {
+	return i;
+      }
+    }
+  }
+  
+  while(t->fdTable[ret] != NULL) {
+    ret++;
+    if(ret == t->fdCap - 1) {
+      break;
+    }
+  }
+  t->fdTable[ret] = malloc(sizeof(struct FdEntry));
+  t->fdTable[ret]->ptr.asDir = newFilePtr;
+  t->fdTable[ret]->isFile = 0;
+  t->fdCount++;
+  
+  if(t->fdCap == t->fdCount) {
+    int oldCap = t->fdCap;
+    t->fdCap *= 2;
+    t->fdTable = (struct FdEntry**)realloc(t->fdTable, sizeof(struct FdEntry*) * t->fdCap);
     for(int i = oldCap; i < t->fdCap; i++) {
       t->fdTable[i] = NULL;
     }
@@ -314,6 +360,7 @@ void thread_remove_fd(int fdToRemove) {
   }
   if(fdToRemove < thread_current()->fdCap) {
     thread_current()->fdCount--;
+    free(thread_current()->fdTable[fdToRemove]);
     thread_current()->fdTable[fdToRemove] = NULL;
   }
 }

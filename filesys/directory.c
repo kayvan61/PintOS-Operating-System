@@ -5,13 +5,50 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  struct dir_entry e;
+  bool ret = inode_create(sector, entry_cnt * sizeof (struct dir_entry), DIR);
+
+  // add the self reference
+  e.inode_sector = sector;
+  e.in_use       = true;
+  // scuffed name
+  e.name[0] = '.'; e.name[1] = '\n';
+  if(inode_write_at (inode_open(sector), &e, sizeof e, 0) != sizeof e) {
+    return false;
+  }
+
+  // root's parent is root
+  if (ROOT_DIR_SECTOR == sector) {
+      e.inode_sector = sector;
+      e.in_use       = true;
+      // scuffed name
+      e.name[0] = '.'; e.name[1] = '.'; e.name[2] = '\n';
+      if(inode_write_at (inode_open(sector), &e, sizeof e, sizeof e) != sizeof e) {
+	return false;
+      }
+  }
+  
+  return ret;
+}
+
+struct dir* getParentDir(struct dir* curDir) {
+  struct dir_entry e;
+
+  // slot 1 is where the parent is kept
+  if(inode_read_at (curDir->inode, &e, sizeof e, sizeof e) != sizeof e) {
+    return NULL;
+  }
+  
+  ASSERT(e.in_use);
+
+  return dir_open(inode_open(e.inode_sector));
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -124,7 +161,7 @@ dir_lookup (const struct dir *dir, const char *name,
    Fails if NAME is invalid (i.e. too long) or a disk or memory
    error occurs. */
 bool
-dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
+dir_add (struct dir *dir, const char *name, block_sector_t inode_sector, enum inode_type type)
 {
   struct dir_entry e;
   off_t ofs;
@@ -141,6 +178,19 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   if (lookup (dir, name, NULL, NULL))
     goto done;
 
+  // make sure directories point to their parents always second element
+  if(type == DIR)  {
+    struct dir_entry c;
+    c.inode_sector = dir->inode->sector;
+    c.in_use       = true;
+    // scuffed name
+    c.name[0] = '.'; c.name[1] = '.'; c.name[2] = '\0';
+    if(inode_write_at (inode_open(inode_sector), &c, sizeof e, sizeof e) != sizeof e) {
+      return false;
+    }
+  }
+
+  
   /* Set OFS to offset of free slot.
      If there are no free slots, then it will be set to the
      current end-of-file.

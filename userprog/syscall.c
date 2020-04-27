@@ -115,8 +115,23 @@ syscall_handler (struct intr_frame *f)
     tell(*(argv));
     break;
   case SYS_CLOSE:
-    f->eax = filesize(*(argv));
-    break;    
+    close(*(argv));
+    break;
+  case SYS_CHDIR:
+    f->eax = chdir(*(argv));
+    break;
+  case SYS_MKDIR:
+    f->eax = mkdir(*(argv));
+    break;
+  case SYS_READDIR:
+    f->eax = readdir(*(argv), *(argv + 1));
+    break;
+  case SYS_ISDIR:
+    f->eax = isdir(*(argv));
+    break;
+  case SYS_INUMBER:
+    f->eax = inumber(*(argv));
+    break;
   }
 }
 
@@ -341,9 +356,11 @@ int filesize (int fd) {
   }
   int ret = -1;
   lock_acquire(&file_system_lock);
-  struct file* fileToWrite = thread_current()->fdTable[fd-2];
-  if(fileToWrite != NULL) {
-    ret = inode_length(fileToWrite->inode);
+  if(thread_current()->fdTable[fd-2] != NULL) {
+    struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
+    if(fileToWrite != NULL) {
+      ret = inode_length(fileToWrite->inode);
+    }
   }
   lock_release(&file_system_lock);
   return ret;
@@ -381,7 +398,7 @@ int read (int fd, void *buffer, unsigned size) {
   if(t->fdCap <= fd-2 || fd < 0) {
     return -1;
   }
-  struct file* fileToRead = thread_current()->fdTable[fd-2];
+  struct file* fileToRead = thread_current()->fdTable[fd-2]->ptr.asFile;
   int ret = -1;
   lock_acquire(&file_system_lock);
   if(fileToRead != NULL && !fileToRead->deny_write) {
@@ -425,7 +442,7 @@ int write (int fd, const void *buffer, unsigned size) {
     return -1;
   }
   
-  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   int ret = 0;
   lock_acquire(&file_system_lock);
   if(fileToWrite != NULL) {
@@ -455,7 +472,7 @@ void seek (int fd, unsigned position) {
     return;
   }
   lock_acquire(&file_system_lock);
-  struct file* fileToSeek = thread_current()->fdTable[fd-2];
+  struct file* fileToSeek = thread_current()->fdTable[fd-2]->ptr.asFile;
   fileToSeek->pos = position;  
   lock_release(&file_system_lock);
 
@@ -474,7 +491,7 @@ unsigned tell (int fd) {
   }
   int ret = 0;
   lock_acquire(&file_system_lock);
-  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   if(fileToWrite != NULL) {
     ret = file_tell(fileToWrite);
   }
@@ -493,11 +510,41 @@ void close (int fd) {
   if(t->fdCap <= fd-2 || fd < 0) {
     return;
   }
+  if(thread_current()->fdTable[fd-2] == NULL) {
+    return;
+  }
   lock_acquire(&file_system_lock);
-  struct file* fileToWrite = thread_current()->fdTable[fd-2];
+  struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   if(fileToWrite != NULL) {
+    if(fileToWrite->deny_write) {
+      file_allow_write(fileToWrite);
+    }
     file_close(fileToWrite);
-    file_allow_write(fileToWrite);
+    thread_current()->fdTable[fd-2] = NULL;
   }
   lock_release(&file_system_lock);
+}
+
+bool chdir(const char* dir) {
+  struct dir* temp = filesys_get_dir (dir, thread_current()->pwd);
+  if(dir != NULL) {
+    thread_current()->pwd = temp;
+  }
+  return temp != NULL;
+}
+
+bool mkdir(const char *dir) {
+  return filesys_create_dir (dir, thread_current()->pwd);
+}
+
+bool readdir(int fd, char* name) {
+  return false;
+}
+
+bool isdir(int fd)  {
+  return false;
+}
+
+int inumber(int fd) {
+  return -1;
 }

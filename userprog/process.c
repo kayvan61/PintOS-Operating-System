@@ -67,12 +67,12 @@ process_execute (const char *file_name)
   }
   progName[indexOfNewNull] = '\0';
   
-  tid = thread_create (progName, PRI_DEFAULT, start_process, fn_copy);  
+  tid = thread_create (progName, PRI_DEFAULT, start_process, fn_copy);
   
   if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy);    
+    palloc_free_page (fn_copy);
   }
-
+  
   return tid;
 }
 
@@ -103,6 +103,14 @@ start_process (void *file_name_)
   }
   else {
     thread_current()->parent->isChildMadeSuccess = 1;
+    /* set process pwd */
+    if(thread_current()->parent != NULL) {
+      thread_current()->pwd = thread_current()->parent->pwd;
+      if (thread_current()->pwd == NULL) {
+	thread_current()->pwd = dir_open_root();
+      }
+    }
+    thread_current()->pwd = thread_current()->parent->pwd;
     sema_up(&thread_current()->parent->childExecLock);
   }
 
@@ -540,7 +548,7 @@ setup_stack (void **esp, char* f_name)
   }
           
   *esp = PHYS_BASE;
-
+  
   // copy the arguments into the stack 
           
   for(int i = argc-1; i >= 0; i--) {
