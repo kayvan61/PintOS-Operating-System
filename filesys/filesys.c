@@ -13,7 +13,7 @@ struct block *fs_device;
 
 static void do_format (void);
 static bool validName(const char*);
-struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name);
+struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, bool*);
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
@@ -53,8 +53,10 @@ filesys_create (const char *name, off_t initial_size)
   }
   block_sector_t inode_sector = 0;
   char final_name[NAME_MAX+1];
-  struct dir *dir = walkPath(name, thread_current()->pwd, final_name);
+  bool isExist;
+  struct dir *dir = walkPath(name, thread_current()->pwd, final_name, &isExist);
   bool success = (dir != NULL
+		  && !isExist
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, FILE)
                   && dir_add (dir, final_name, inode_sector, FILE));
@@ -77,14 +79,28 @@ filesys_open (const char *name)
     return NULL;
   }
   char final_name[NAME_MAX+1];
-  struct dir *dir = walkPath(name, thread_current()->pwd, final_name);
+  struct dir *dir = walkPath(name, thread_current()->pwd, final_name, NULL);
   struct inode *inode = NULL;
 
   if (dir != NULL)
     dir_lookup (dir, final_name, &inode);
   dir_close (dir);
-
+  
   return file_open (inode);
+}
+
+struct dir* filesys_open_dir(const char *name) {
+   if(!validName(name)) {
+    return NULL;
+  }
+  char final_name[NAME_MAX+1];
+  bool isExist;
+  struct dir *dir = walkPath(name, thread_current()->pwd, final_name, &isExist);
+  if(!isExist) {
+    dir_close(dir);
+    return NULL;
+  }
+  return dir;
 }
 
 /* Deletes the file named NAME.
@@ -118,7 +134,7 @@ do_format (void)
 
 // walks a path and then returns a dir
 // pointing to the last dir in that path
-struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name) {
+struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, bool* lastExist) {
   char* currentToken = NULL;
   char* saveptr      = NULL;
   char* tempBuf      = malloc(sizeof(char) * (strlen(name) + 1));
@@ -185,11 +201,20 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name) 
   // we didnt exit prematurely due to something not existing on
   // the path
   free(tempBuf);
+  if(lastExist) {
+    *lastExist = !notExist;
+  }
   return curDir;
 }
 
 struct dir* filesys_get_dir (const char *name, const struct dir* parent) {
-  return walkPath(name, parent, NULL);
+  bool isExist;
+  struct dir* ret = walkPath(name, parent, NULL, &isExist);
+  if(!isExist) {
+    dir_close(ret);
+    return NULL;
+  }
+  return ret;
 }
 
 bool filesys_create_dir (const char *name, const struct dir* parent) {
@@ -198,7 +223,7 @@ bool filesys_create_dir (const char *name, const struct dir* parent) {
   }
   block_sector_t inode_sector = 0;
   char final_name[NAME_MAX+1]; // name at the end of tokenization
-  struct dir* final_parent = walkPath(name, parent, final_name);
+  struct dir* final_parent = walkPath(name, parent, final_name, NULL);
   bool success = (final_parent != NULL
                   && free_map_allocate (1, &inode_sector)
                   && dir_create (inode_sector, 16)

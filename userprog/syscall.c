@@ -333,12 +333,25 @@ bool remove (const char *file) {
 
 int open (const char *file) {
   lock_acquire(&file_system_lock);
+  int dirFlag = 0;
+  int ret;
   struct file* openedFile = filesys_open(file);
   if(openedFile == NULL){
-    lock_release(&file_system_lock); 
-    return -1;
+    openedFile = filesys_open_dir(file);
+    if(openedFile == NULL) {
+      lock_release(&file_system_lock); 
+      return -1;
+    }
+    else {
+      dirFlag = 1;
+    }
   }
-  int ret = thread_add_fd(openedFile);
+  if(!dirFlag) {
+    ret = thread_add_fd(openedFile);
+  }
+  else {
+    ret = thread_add_dir(openedFile);
+  }
   lock_release(&file_system_lock); 
   return ret + 2;
 }
@@ -357,11 +370,17 @@ int filesize (int fd) {
   int ret = -1;
   lock_acquire(&file_system_lock);
   if(thread_current()->fdTable[fd-2] != NULL) {
+    if(thread_current()->fdTable[fd-2]->isFile == 0) {
+      lock_release(&file_system_lock);
+      return -1;
+    }
     struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
     if(fileToWrite != NULL) {
       ret = inode_length(fileToWrite->inode);
     }
   }
+  
+ DONE:
   lock_release(&file_system_lock);
   return ret;
 }
@@ -441,7 +460,10 @@ int write (int fd, const void *buffer, unsigned size) {
   if(t->fdCap <= fd-2 || fd < 0) {
     return -1;
   }
-  
+
+  if(thread_current()->fdTable[fd-2]->isFile == 0) {
+    return -1;
+  }
   struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   int ret = 0;
   lock_acquire(&file_system_lock);
@@ -516,11 +538,19 @@ void close (int fd) {
   lock_acquire(&file_system_lock);
   struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   if(fileToWrite != NULL) {
-    if(fileToWrite->deny_write) {
-      file_allow_write(fileToWrite);
+    if(thread_current()->fdTable[fd-2]->isFile) {
+      if(fileToWrite->deny_write) {
+	file_allow_write(fileToWrite);
+      }
+      file_close(fileToWrite);
+      free(thread_current()->fdTable[fd-2]);
+      thread_current()->fdTable[fd-2] = NULL;
     }
-    file_close(fileToWrite);
-    thread_current()->fdTable[fd-2] = NULL;
+    else {
+      dir_close(fileToWrite);
+      free(thread_current()->fdTable[fd-2]);
+      thread_current()->fdTable[fd-2] = NULL;
+    }
   }
   lock_release(&file_system_lock);
 }
