@@ -39,7 +39,6 @@ static void set_page_to_accessed(void* upage) {
 static void
 syscall_handler (struct intr_frame *f)
 {
-
   thread_current()->t_esp = f->esp;
   
   if(!validate_ptr(f->esp, 1)) {
@@ -313,7 +312,7 @@ bool remove (const char *file) {
 
   bool ret = false;
   lock_acquire(&file_system_lock);
-
+  
   ret = filesys_remove(file);
   
   lock_release(&file_system_lock); 
@@ -572,9 +571,34 @@ bool readdir(int fd, char* name) {
 }
 
 bool isdir(int fd)  {
-  return false;
+  if(fd == 1 || fd == 0) {    
+    return false;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return false;
+  }
+  if(thread_current()->fdTable[fd-2] == NULL) {
+    return false;
+  }
+  return thread_current()->fdTable[fd-2]->isFile;
 }
 
 int inumber(int fd) {
-  return -1;
+  if(fd == 1 || fd == 0) {    
+    return -1;
+  }
+  struct thread* t = thread_current();
+  if(t->fdCap <= fd-2 || fd < 0) {
+    return -1;
+  }
+  if(thread_current()->fdTable[fd-2] == NULL) {
+    return -1;
+  }
+  if(thread_current()->fdTable[fd-2]->isFile) {
+    return thread_current()->fdTable[fd-2]->ptr.asFile->inode->sector;
+  }
+  else {
+    return thread_current()->fdTable[fd-2]->ptr.asDir->inode->sector;
+  }
 }

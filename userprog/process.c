@@ -105,12 +105,16 @@ start_process (void *file_name_)
     thread_current()->parent->isChildMadeSuccess = 1;
     /* set process pwd */
     if(thread_current()->parent != NULL) {
-      thread_current()->pwd = thread_current()->parent->pwd;
-      if (thread_current()->pwd == NULL) {
+      if(thread_current()->parent->pwd != NULL) {
+	thread_current()->pwd = dir_open(thread_current()->parent->pwd->inode);
+      }
+      else {
 	thread_current()->pwd = dir_open_root();
       }
     }
-    thread_current()->pwd = thread_current()->parent->pwd;
+    else {
+      thread_current()->pwd = dir_open_root();
+    }
     sema_up(&thread_current()->parent->childExecLock);
   }
 
