@@ -14,11 +14,13 @@ enum inode_type{FILE=0, DIR=1};
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    block_sector_t start;               /* First data sector. */
     off_t length;                       /* File size in bytes. */
     uint32_t type;                      
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[124];               /* Not used. */
+    block_sector_t direct[10];          /* Pointer to get to the next inode */
+    block_sector_t indirect;
+    block_sector_t doubleIndirect;
+    uint32_t unused[113];               /* Not used. */
   };
 
 /* In-memory inode. */
