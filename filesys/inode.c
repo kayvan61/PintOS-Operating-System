@@ -462,7 +462,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
       return true;
     }
     else {
-      PANIC("Allocating new sector failed");
+      return false;
     }
   }
   else if(indirect != -1) {
@@ -476,7 +476,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
 	block_write (fs_device, sector, inode);
       }
       else {
-	PANIC("Allocating new sector failed");
+	return false;
       }
       
     }
@@ -501,7 +501,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
       return true;
     }
     else {
-      PANIC("Allocating new sector failed");
+      return false;
     }
     
   }
@@ -524,7 +524,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
 	block_write (fs_device, inode->doubleIndirect, blocks); // ensure that unalloced blocks are marked as unalloced
       }
       else {
-	PANIC("Allocating new sector failed");
+	return false;
       }
     }
 
@@ -540,7 +540,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
 	block_write (fs_device, inode->doubleIndirect, blocks);  // update the first level of the table
       }
       else {
-	PANIC("Allocating new sector failed");
+	return false;
       }
     }
     
@@ -561,7 +561,7 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
       return true;
     }
     else {
-      PANIC("Allocating new sector failed");
+      return false;
     }
     
   }
@@ -637,9 +637,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
   uint8_t *bounce = NULL;
-  bool addedSector = false;
+  bool changedInode = false;
   if(offset + size > inode->data.length) {
     inode->data.length += offset + size - inode->data.length;
+    changedInode = true;
   }
 
   if (inode->deny_write_cnt)
@@ -654,7 +655,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 	  return 0;
 	}
 	sector_idx = byte_to_sector (inode, offset);
-	addedSector = true;
+	changedInode = true;
       }
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
@@ -700,6 +701,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       bytes_written += chunk_size;
     }
   free (bounce);
+
+  if(changedInode) {
+    block_write (fs_device, inode->sector, &inode->data);
+  }
 
   return bytes_written;
 }

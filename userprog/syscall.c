@@ -570,7 +570,8 @@ bool mkdir(const char *dir) {
 
 bool readdir(int fd, char* name) {
   struct dir* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asDir;
-  return dir_readdir(fileToWrite, name);
+  bool temp = dir_readdir(fileToWrite, name);
+  return temp;
 }
 
 bool isdir(int fd)  {

@@ -84,6 +84,7 @@ filesys_open (const char *name)
   
   if (dir != NULL) {
     if(dir->inode->removed) {
+      dir_close(dir);
       return NULL;
     }
     dir_lookup (dir, final_name, &inode);
@@ -108,6 +109,7 @@ struct dir* filesys_open_dir(const char *name) {
     return NULL;
   }
   if(dir->inode->removed) {
+    dir_close(dir);
     return NULL;
   }
   if(!isExist) {
@@ -131,7 +133,7 @@ filesys_remove (const char *name)
   bool isExist;
   bool isFile;
   bool success;
-  struct inode *temp = malloc(sizeof(struct inode));
+  struct inode *temp = NULL;
   struct dir *dir = walkPath(name, thread_current()->pwd, final_name, &isExist, &isFile);
   struct dir *prtDir = NULL;
   if(dir->inode->removed) {
@@ -151,8 +153,10 @@ filesys_remove (const char *name)
   else {
     success = dir != NULL && isExist && dir_remove (dir, final_name);
   }
+  
   dir_close (dir);
-
+  dir_close (prtDir);
+  inode_close (temp);
   return success;
 }
 
@@ -177,7 +181,7 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
   memcpy(tempBuf, name, sizeof(char) * (strlen(name) +1));
   struct dir* curDir = NULL;
   struct dir* tempDir = NULL;
-  struct inode* temp = malloc(sizeof(struct inode));
+  struct inode* temp = NULL;
   bool notExist = false;
   bool fileOnPath = false;
   bool usingPWD   = false;
