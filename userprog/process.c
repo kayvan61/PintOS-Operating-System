@@ -24,7 +24,7 @@
 
 #define LOGGING_LEVEL 6
 #define MAX_ARGS      50
-#define MAX_ARG_LEN   20
+#define MAX_ARG_LEN   30
 #include <log.h>
 
 static thread_func start_process NO_RETURN;
@@ -55,11 +55,11 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   
-  char progName[16];
+  char progName[MAX_ARG_LEN+1];
 
   // get the program name from the arg list
   int indexOfNewNull = 0;
-  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull < 15){
+  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull <= MAX_ARG_LEN){
       progName[indexOfNewNull] = file_name[indexOfNewNull];
       if(file_name[indexOfNewNull] == ' ') { break; }
       if(file_name[indexOfNewNull] == '\0') { indexOfNewNull = -1; break; }
@@ -301,11 +301,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;  
-  char progName[16];
+  char progName[MAX_ARG_LEN];
 
   // get the program name from the arg list
   int indexOfNewNull = 0;
-  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull < 15){
+  while(file_name[indexOfNewNull] != ' ' && file_name[indexOfNewNull] != '\0' && indexOfNewNull <= MAX_ARG_LEN){
       progName[indexOfNewNull] = file_name[indexOfNewNull];
       if(file_name[indexOfNewNull] == ' ') { break; }
       if(file_name[indexOfNewNull] == '\0') { indexOfNewNull = -1; break; }

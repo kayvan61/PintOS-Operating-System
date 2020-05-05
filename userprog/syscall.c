@@ -585,7 +585,7 @@ bool isdir(int fd)  {
   if(thread_current()->fdTable[fd-2] == NULL) {
     return false;
   }
-  return thread_current()->fdTable[fd-2]->isFile;
+  return !thread_current()->fdTable[fd-2]->isFile;
 }
 
 int inumber(int fd) {
