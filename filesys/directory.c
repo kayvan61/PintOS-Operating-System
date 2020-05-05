@@ -17,13 +17,14 @@ dir_create (block_sector_t sector, size_t entry_cnt)
   if(!ret) {
     return ret;
   }
+  struct inode* inode = inode_open(sector);
 
   // add the self reference
   e.inode_sector = sector;
   e.in_use       = true;
   // scuffed name
   e.name[0] = '.'; e.name[1] = '\n';
-  if(inode_write_at (inode_open(sector), &e, sizeof e, 0) != sizeof e) {
+  if(inode_write_at (inode, &e, sizeof e, 0) != sizeof e) {
     return false;
   }
 
@@ -33,10 +34,12 @@ dir_create (block_sector_t sector, size_t entry_cnt)
       e.in_use       = true;
       // scuffed name
       e.name[0] = '.'; e.name[1] = '.'; e.name[2] = '\n';
-      if(inode_write_at (inode_open(sector), &e, sizeof e, sizeof e) != sizeof e) {
+      if(inode_write_at (inode, &e, sizeof e, sizeof e) != sizeof e) {
 	return false;
       }
   }
+
+  inode_close(inode);
   
   return ret;
 }
@@ -183,14 +186,16 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector, enum in
 
   // make sure directories point to their parents always second element
   if(type == DIR)  {
+    struct inode* inode = inode_open(inode_sector);
     struct dir_entry c;
     c.inode_sector = dir->inode->sector;
     c.in_use       = true;
     // scuffed name
     c.name[0] = '.'; c.name[1] = '.'; c.name[2] = '\0';
-    if(inode_write_at (inode_open(inode_sector), &c, sizeof e, sizeof e) != sizeof e) {
+    if(inode_write_at (inode, &c, sizeof e, sizeof e) != sizeof e) {
       return false;
     }
+    inode_close(inode);
   }
 
   

@@ -103,10 +103,10 @@ start_process (void *file_name_)
   }
   else {
     thread_current()->parent->isChildMadeSuccess = 1;
-    /* set process pwd */
+    /* set process pwd*/
     if(thread_current()->parent != NULL) {
       if(thread_current()->parent->pwd != NULL) {
-	thread_current()->pwd = dir_open(thread_current()->parent->pwd->inode);
+	thread_current()->pwd = dir_reopen(thread_current()->parent->pwd);
       }
       else {
 	thread_current()->pwd = dir_open_root();
@@ -184,6 +184,7 @@ process_exit (void)
   cur->SPageTable.aux = cur;
   hash_destroy (&cur->SPageTable, &supFree);
   intr_set_level(prev);
+  dir_close(cur->pwd);
   
   pd = cur->pagedir;
   if (pd != NULL)

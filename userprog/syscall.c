@@ -546,7 +546,7 @@ void close (int fd) {
       thread_current()->fdTable[fd-2] = NULL;
     }
     else {
-      //dir_close(fileToWrite);
+      dir_close(fileToWrite);
       free(thread_current()->fdTable[fd-2]);
       thread_current()->fdTable[fd-2] = NULL;
     }
@@ -558,6 +558,7 @@ void close (int fd) {
 bool chdir(const char* dir) {
   struct dir* temp = filesys_get_dir (dir, thread_current()->pwd);
   if(temp != NULL) {
+    dir_close(thread_current()->pwd);
     thread_current()->pwd = temp;
   }
   return temp != NULL;

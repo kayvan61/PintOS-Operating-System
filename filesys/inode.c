@@ -380,6 +380,7 @@ inode_close (struct inode *inode)
 	    }
 	    else {
 	      free (inode);
+	      free(blocks);
 	      return;
 	    }
 	  }
@@ -398,11 +399,15 @@ inode_close (struct inode *inode)
 		free_map_release (secondBlocks[j], 1);
 	      }
 	      else {
+		free(blocks);
+		free(secondBlocks);
 		free (inode);
 		return;
 	      }
 	    }
 	  }
+	  free(blocks);
+	  free(secondBlocks);
       }
       free (inode);
     }

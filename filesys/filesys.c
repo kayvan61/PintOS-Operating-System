@@ -212,6 +212,7 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
 	*final_name = '\0';
       }
       free(tempBuf);
+      inode_close(temp);
       if(lastExist) {
 	*lastExist = !notExist;
       }
@@ -223,9 +224,7 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
     }
     else if(strcmp(currentToken, "..") == 0) {
       tempDir = getParentDir(curDir);
-      if(usingPWD && curDir->inode->sector != pwd->inode->sector) {
-	dir_close(curDir);
-      }
+      dir_close(curDir);
       curDir = tempDir;
     }
     else {
@@ -240,12 +239,10 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
 	  notExist = true;
 	}
 	else if (temp->data.type == FILE) {
-	  fileOnPath = true;
+	  fileOnPath = true;	  
 	}
 	else {
-	  if(usingPWD && curDir->inode->sector != pwd->inode->sector) {
-	    dir_close(curDir);
-	  }
+	  dir_close(curDir);
 	  curDir = dir_open( temp );
 	}
       }
