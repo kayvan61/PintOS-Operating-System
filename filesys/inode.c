@@ -13,7 +13,7 @@
 
 bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_t offset);
 void offset_to_arrIndex(off_t off, int* dirInd, int* indirOff, int* dIndirOff1, int* dIndirOff2);
-
+bool fillZeros(block_sector_t, struct inode_disk *, int, int, int, int);
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -40,7 +40,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
     else if(indir != -1) {
       if(inode->data.indirect == 0xFFFFFFFF) {
 	return -1;
-      }
+      }      
 
       block_sector_t newBlock;
       block_sector_t* blocks = malloc(sizeof(block_sector_t) * 128);
@@ -138,6 +138,143 @@ inode_create (block_sector_t sector, off_t length, enum inode_type type)
       free(disk_inode);
     }
   return success;
+}
+
+/*
+ * fill unalloced blocks with zero blocks up to 
+ * the indexes provided
+ */
+
+bool fillZeros(block_sector_t sector, struct inode_disk *inode, int dir, int indir, int dIndir1, int dIndir2) {
+  bool updated = false;
+  int maxIndirInd;
+  int maxDirInd;
+  
+  // which blocks need to be filled?
+  if(dIndir1 != -1) {
+    maxIndirInd = 128;
+    maxDirInd   = 10;
+  }
+  else if(indir != -1) {
+    maxIndirInd = indir;
+    maxDirInd = 10;
+  }
+  else {
+    maxDirInd = dir + 1;
+  }
+
+  // allocated temp buffer (bounce sorta)
+  block_sector_t* blocks = malloc(sizeof(block_sector_t) * 128);
+  if(blocks == NULL) {
+    PANIC("Ran out of heap for fillZeros");
+  }
+
+  // fill direct
+  for(int i = 0; i < maxDirInd; i++) {
+    if(inode->direct[i] == 0xFFFFFFFF) {
+      if(free_map_allocate (1, &inode->direct[i])) {	  
+	updated = true;
+      }
+      else {
+	free(blocks);
+	return false;
+      }
+    }
+  }
+  if(updated) {
+    block_write (fs_device, sector, inode);
+  }
+
+  // fill indirect
+  updated = false;
+  if(maxIndirInd > 0) {
+    if(inode->indirect == 0xFFFFFFFF) {
+      if(free_map_allocate (1, &inode->indirect)) {	  	
+	block_write (fs_device, sector, inode);
+      }
+      else {
+	free(blocks);
+	return false;
+      }
+    }
+    block_read(fs_device, inode->indirect, blocks);
+  }
+  
+  for (int i = 0; i < maxIndirInd; i++) {
+    if(blocks[i] == 0xFFFFFFFF || blocks[i] == 0) {
+      if(free_map_allocate (1, &blocks[i])) {
+	updated = true;
+      }
+    }
+  }
+  
+  if(updated) {
+    block_write (fs_device, inode->indirect, blocks);
+  }
+
+  // fill double indirect
+  for (int i = 0; i < dIndir1; i++) {
+    updated = false;
+    block_read(fs_device, inode->doubleIndirect, blocks);
+    block_sector_t curBlock = blocks[i];
+
+    if(curBlock == 0xFFFFFFFF) {
+      if(free_map_allocate (1, &blocks[i])) {
+	block_write (fs_device, inode->doubleIndirect, blocks);
+	curBlock = blocks[i];
+      }
+      else {
+	free(blocks);
+	return false;
+      }
+    }
+    ASSERT(curBlock != 0xFFFFFFFF);
+    
+    block_read(fs_device, curBlock, blocks);
+    for(int j = 0; j < 128; j++) {
+      if(blocks[j] == 0xFFFFFFFF || blocks[j] == 0) {
+	if(free_map_allocate (1, &blocks[j])) {
+	  updated = true;
+	}
+	else {
+	  free(blocks);
+	  return false;
+	}
+      }
+    }
+    
+    if(updated) {
+      block_write (fs_device, curBlock, blocks);
+    }
+  }
+
+  // update last double indirect page
+  updated = false;
+  if(dIndir1 >= 0) {
+    block_read(fs_device, inode->doubleIndirect, blocks);
+    block_sector_t curBlock = blocks[dIndir1];
+    ASSERT(curBlock != 0xFFFFFFFF);
+  
+    block_read(fs_device, curBlock, blocks);
+    for(int i = 0; i < dIndir2; i++) {
+      if(blocks[i] == 0xFFFFFFFF || blocks[i] == 0) {
+	if(free_map_allocate (1, &blocks[i])) {
+	  updated = true;
+	}
+	else {
+	  free(blocks);
+	  return false;
+	}
+      }
+    }
+  
+    if(updated) {
+      block_write (fs_device, curBlock, blocks);
+    }
+  }
+
+  free(blocks);
+  return true;
 }
 
 /* Reads an inode from SECTOR
@@ -314,6 +451,9 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
     if(free_map_allocate (1, &inode->direct[direct])) {
       // update the metadata on disk 
       block_write (fs_device, sector, inode);
+      if(!fillZeros(sector, inode, direct, -1, -1, -1)) {	
+	return false;
+      }
       return true;
     }
     else {
@@ -348,6 +488,10 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
       block_read(fs_device, inode->indirect, blocks);
       blocks[indirect] = newBlock;
       block_write (fs_device, inode->indirect, blocks);
+      if(!fillZeros(sector, inode, -1, indirect, -1, -1)) {
+	free(blocks);
+	return false;
+      }
       free(blocks);
       return true;
     }
@@ -404,6 +548,10 @@ bool inode_disk_add_sector(block_sector_t sector, struct inode_disk *inode, off_
       block_read (fs_device, secondLevelBlock, blocks);
       blocks[doubleIndir2] = newBlock;
       block_write (fs_device, secondLevelBlock, blocks);
+      if(!fillZeros(sector, inode, -1, -1, doubleIndir1, doubleIndir2)) {
+	free(blocks);
+	return false;
+      }
       free(blocks);
       return true;
     }
@@ -484,6 +632,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
   uint8_t *bounce = NULL;
+  bool addedSector = false;
   if(offset + size > inode->data.length) {
     inode->data.length += offset + size - inode->data.length;
   }
@@ -495,9 +644,12 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     {
       /* Sector to write, starting byte offset within sector. */
       block_sector_t sector_idx = byte_to_sector (inode, offset);
-      if(sector_idx == 0xFFFFFFFF) {
-	inode_disk_add_sector(inode->sector, &inode->data, offset);
+      if(sector_idx == 0xFFFFFFFF || sector_idx == 0) {
+	if(!inode_disk_add_sector(inode->sector, &inode->data, offset)) {
+	  return 0;
+	}
 	sector_idx = byte_to_sector (inode, offset);
+	addedSector = true;
       }
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 

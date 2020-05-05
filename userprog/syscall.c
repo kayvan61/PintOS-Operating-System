@@ -111,7 +111,7 @@ syscall_handler (struct intr_frame *f)
     seek(*(argv), *(argv+1));
     break;
   case SYS_TELL:
-    tell(*(argv));
+    f->eax = tell(*(argv));
     break;
   case SYS_CLOSE:
     close(*(argv));
@@ -546,17 +546,18 @@ void close (int fd) {
       thread_current()->fdTable[fd-2] = NULL;
     }
     else {
-      dir_close(fileToWrite);
+      //dir_close(fileToWrite);
       free(thread_current()->fdTable[fd-2]);
       thread_current()->fdTable[fd-2] = NULL;
     }
+    thread_current()->fdCount--;
   }
   lock_release(&file_system_lock);
 }
 
 bool chdir(const char* dir) {
   struct dir* temp = filesys_get_dir (dir, thread_current()->pwd);
-  if(dir != NULL) {
+  if(temp != NULL) {
     thread_current()->pwd = temp;
   }
   return temp != NULL;
@@ -567,7 +568,8 @@ bool mkdir(const char *dir) {
 }
 
 bool readdir(int fd, char* name) {
-  return false;
+  struct dir* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asDir;
+  return dir_readdir(fileToWrite, name);
 }
 
 bool isdir(int fd)  {

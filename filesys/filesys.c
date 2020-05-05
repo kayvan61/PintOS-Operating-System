@@ -62,7 +62,7 @@ filesys_create (const char *name, off_t initial_size)
                   && dir_add (dir, final_name, inode_sector, FILE));
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
-  //dir_close (dir);
+  dir_close (dir);
 
   return success;
 }
@@ -92,7 +92,7 @@ filesys_open (const char *name)
     return NULL;
   }
   
-  //dir_close (dir);
+  dir_close (dir);
   
   return file_open (inode);
 }
@@ -186,7 +186,7 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
   }
   else {
     usingPWD = true;
-    curDir = pwd;
+    curDir = dir_reopen(pwd);
   }
   
   for (currentToken = strtok_r (tempBuf, "/", &saveptr); currentToken != NULL;
@@ -288,7 +288,7 @@ bool filesys_create_dir (const char *name, const struct dir* parent) {
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   
-  //dir_close(final_parent);
+  dir_close(final_parent);
   return success;
 }
 

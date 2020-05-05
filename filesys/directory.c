@@ -14,6 +14,9 @@ dir_create (block_sector_t sector, size_t entry_cnt)
 {
   struct dir_entry e;
   bool ret = inode_create(sector, entry_cnt * sizeof (struct dir_entry), DIR);
+  if(!ret) {
+    return ret;
+  }
 
   // add the self reference
   e.inode_sector = sector;
@@ -93,8 +96,8 @@ dir_close (struct dir *dir)
 {
   if (dir != NULL)
     {
-      inode_close (dir->inode);
-      free (dir);
+	inode_close (dir->inode);
+	free (dir);    
     }
 }
 
@@ -258,15 +261,21 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
 
-  while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e)
-    {
-      dir->pos += sizeof e;
-      if (e.in_use)
-        {
-          strlcpy (name, e.name, NAME_MAX + 1);
-          return true;
-        }
+  if(!name) {
+    return false;
+  }
+  
+  if(dir->pos <= 2 * sizeof(e)) {
+    dir->pos = 2 * sizeof(e);
+  }
+
+  while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) {
+    dir->pos += sizeof e;
+    if (e.in_use) {
+      strlcpy (name, e.name, NAME_MAX + 1);
+      return true;
     }
+  }
   return false;
 }
 
