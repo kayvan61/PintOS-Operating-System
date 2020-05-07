@@ -10,7 +10,7 @@ struct file *
 file_open (struct inode *inode)
 {
   struct file *file = calloc (1, sizeof *file);
-  if (inode != NULL && file != NULL)
+  if (inode != NULL && file != NULL && inode->data.type == FILE)
     {
       file->inode = inode;
       file->pos = 0;

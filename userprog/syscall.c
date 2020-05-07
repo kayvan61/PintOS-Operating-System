@@ -17,13 +17,11 @@
 static void syscall_handler (struct intr_frame *);
 static bool validate_ptr(const void* ptr, int spanSize);
 
-static struct lock file_system_lock; 
 
 void
 syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&file_system_lock);
 }
 
 static void set_page_to_dirty(void* upage) {
@@ -240,10 +238,8 @@ tid_t exec (const char *cmd_line) {
   }
 
   tid_t pid = process_execute(cmd_line);
-  lock_acquire(&file_system_lock);
   sema_down(&thread_current()->childExecLock);
   bool loaded = thread_current()->isChildMadeSuccess;  
-  lock_release(&file_system_lock);
   return loaded ? pid : -1;
 }
 
@@ -294,11 +290,9 @@ int wait (tid_t pid) {
 bool create (const char *file, unsigned initial_size) {
 
   bool ret = false;
-  lock_acquire(&file_system_lock);
 
   ret = filesys_create(file, initial_size);
   
-  lock_release(&file_system_lock);
   return ret;
 }
 
@@ -311,11 +305,9 @@ bool create (const char *file, unsigned initial_size) {
 bool remove (const char *file) {
 
   bool ret = false;
-  lock_acquire(&file_system_lock);
   
   ret = filesys_remove(file);
   
-  lock_release(&file_system_lock); 
   return ret;
 }
 
@@ -331,27 +323,21 @@ bool remove (const char *file) {
    Different file descriptors for a single file are closed independently in separate calls to close and they do not share a file position. */
 
 int open (const char *file) {
-  lock_acquire(&file_system_lock);
-  int dirFlag = 0;
   int ret;
   struct file* openedFile = filesys_open(file);
   if(openedFile == NULL){
     openedFile = filesys_open_dir(file);
     if(openedFile == NULL) {
-      lock_release(&file_system_lock); 
       return -1;
     }
-    else {
-      dirFlag = 1;
-    }
   }
-  if(!dirFlag) {
+  if(openedFile->inode->data.type == FILE) {
     ret = thread_add_fd(openedFile);
   }
   else {
+    ASSERT(openedFile->inode->data.type == DIR);
     ret = thread_add_dir(openedFile);
   }
-  lock_release(&file_system_lock); 
   return ret + 2;
 }
   
@@ -367,10 +353,8 @@ int filesize (int fd) {
     return -1;
   }
   int ret = -1;
-  lock_acquire(&file_system_lock);
   if(thread_current()->fdTable[fd-2] != NULL) {
     if(thread_current()->fdTable[fd-2]->isFile == 0) {
-      lock_release(&file_system_lock);
       return -1;
     }
     struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
@@ -380,7 +364,6 @@ int filesize (int fd) {
   }
   
  DONE:
-  lock_release(&file_system_lock);
   return ret;
 }
   
@@ -418,7 +401,6 @@ int read (int fd, void *buffer, unsigned size) {
   }
   struct file* fileToRead = thread_current()->fdTable[fd-2]->ptr.asFile;
   int ret = -1;
-  lock_acquire(&file_system_lock);
   if(fileToRead != NULL && !fileToRead->deny_write) {
     struct thread* t = thread_current();
     void* bufferEnd = (buffer + size);
@@ -430,7 +412,6 @@ int read (int fd, void *buffer, unsigned size) {
       unpin_page(i, t->tid);
     }
   }
-  lock_release(&file_system_lock);
   
   return ret;
 }
@@ -465,13 +446,11 @@ int write (int fd, const void *buffer, unsigned size) {
   }
   struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   int ret = 0;
-  lock_acquire(&file_system_lock);
   if(fileToWrite != NULL) {
     if(!fileToWrite->deny_write) {
       ret = file_write (fileToWrite, buffer, size);
     }
   }
-  lock_release(&file_system_lock);
   return ret;
 }
 
@@ -492,10 +471,8 @@ void seek (int fd, unsigned position) {
   if(t->fdCap <= fd-2 || fd < 0) {
     return;
   }
-  lock_acquire(&file_system_lock);
   struct file* fileToSeek = thread_current()->fdTable[fd-2]->ptr.asFile;
   fileToSeek->pos = position;  
-  lock_release(&file_system_lock);
 
 }
 
@@ -511,12 +488,10 @@ unsigned tell (int fd) {
     return 0;
   }
   int ret = 0;
-  lock_acquire(&file_system_lock);
   struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   if(fileToWrite != NULL) {
     ret = file_tell(fileToWrite);
   }
-  lock_release(&file_system_lock);
   return ret;
 }
 
@@ -534,7 +509,6 @@ void close (int fd) {
   if(thread_current()->fdTable[fd-2] == NULL) {
     return;
   }
-  lock_acquire(&file_system_lock);
   struct file* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asFile;
   if(fileToWrite != NULL) {
     if(thread_current()->fdTable[fd-2]->isFile) {
@@ -552,7 +526,6 @@ void close (int fd) {
     }
     thread_current()->fdCount--;
   }
-  lock_release(&file_system_lock);
 }
 
 bool chdir(const char* dir) {
@@ -569,6 +542,7 @@ bool mkdir(const char *dir) {
 }
 
 bool readdir(int fd, char* name) {
+  ASSERT(isdir(fd));
   struct dir* fileToWrite = thread_current()->fdTable[fd-2]->ptr.asDir;
   bool temp = dir_readdir(fileToWrite, name);
   return temp;

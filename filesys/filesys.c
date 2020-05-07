@@ -72,18 +72,46 @@ filesys_create (const char *name, off_t initial_size)
    otherwise.
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
+
+//0/0/3: open failed
+//0/1/3: open failed
+//0/2/3: open failed
+//1/0/3: open failed
+//1/1/3: open failed
+//1/2/3: open failed
+//2/0/3: open failed
+//2/1/3: open failed
+//2/2/3: open failed
+//3/0/3: open failed
+//3/1/3: open failed
+//3/2/3: open failed
+
+/*
+$3 = {elem = {prev = 0xc00425bc <open_inodes>, next = 0xc010980c}, 
+  sector = 192, open_cnt = 1, removed = false, deny_write_cnt = 0, data = {
+    length = 576, type = 1, magic = 1229868868, direct = {193, 194, 195, 
+      4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 4294967295, 
+      4294967295}, indirect = 4294967295, doubleIndirect = 4294967295, 
+    unused = {0 <repeats 113 times>}}, writeLock = {holder = 0x0, 
+    semaphore = {value = 1, waiters = {head = {prev = 0x0, 
+          next = 0xc0117234}, tail = {prev = 0xc011722c, next = 0x0}}}}, 
+  readCond = {waiters = {head = {prev = 0x0, next = 0xc0117244}, tail = {
+        prev = 0xc011723c, next = 0x0}}}, countReaders = 0, countWriters = 0}
+
+ */
 struct file *
 filesys_open (const char *name)
 {
   if(!validName(name)) {
     return NULL;
   }
+  bool endsInFile;
   char final_name[NAME_MAX+1];
-  struct dir *dir = walkPath(name, thread_current()->pwd, final_name, NULL, NULL);
+  struct dir *dir = walkPath(name, thread_current()->pwd, final_name, NULL, &endsInFile);
   struct inode *inode = NULL;
   
   if (dir != NULL) {
-    if(dir->inode->removed) {
+    if(dir->inode->removed || !endsInFile) {
       dir_close(dir);
       return NULL;
     }
@@ -220,6 +248,7 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
       if(lastExist) {
 	*lastExist = !notExist;
       }
+      dir_close(curDir);
       return NULL;
     }
     
@@ -241,9 +270,11 @@ struct dir* walkPath(const char *name, const struct dir* pwd, char* final_name, 
       else {
 	if(temp->removed) {
 	  notExist = true;
+	  inode_close(temp);
 	}
 	else if (temp->data.type == FILE) {
-	  fileOnPath = true;	  
+	  fileOnPath = true;
+	  inode_close(temp);
 	}
 	else {
 	  dir_close(curDir);

@@ -178,6 +178,25 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  for(int i = 0; i < cur->fdCap; i++) {
+    if(cur->fdTable[i] != NULL) {
+      struct file* fileToWrite = cur->fdTable[i]->ptr.asFile;
+      if(cur->fdTable[i]->isFile) {
+	if(fileToWrite->deny_write) {
+	  file_allow_write(fileToWrite);
+	}
+	file_close(fileToWrite);
+	free(cur->fdTable[i]);
+	cur->fdTable[i] = NULL;
+      }
+      else {
+	dir_close(fileToWrite);
+	free(cur->fdTable[i]);
+	cur->fdTable[i] = NULL;
+      }
+    }
+  }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   enum intr_level prev = intr_set_level(INTR_OFF);
