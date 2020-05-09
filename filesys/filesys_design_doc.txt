@@ -8,8 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Ali Mansoorshahi <kayvan.mansoor@utexas.edu>
+Utsha Khondkar <utsha.kh@utexas.edu>
 
 ---- PRELIMINARIES ----
 
@@ -29,8 +29,28 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+struct inode_disk
+  {
+    off_t length;                       /* File size in bytes. */
+    uint32_t type;                      
+    unsigned magic;                     /* Magic number. */
+    block_sector_t direct[10];          /* Pointer to get to the next inode */
+    block_sector_t indirect;
+    block_sector_t doubleIndirect;
+    uint32_t unused[113];               /* Not used. */
+  };
+
+This represents an inode used to keep track of sectors that files and dirs points to
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+direct          = 10 sectors * 512bytes/sector
+indirect        = 128 sectors * 512bytes/sector
+double indirect = 128 sectors * 128 sectors * 512bytes/sector
+
+total           = 8459264 bytes = ~8MB 
+
 
 ---- RATIONALE ----
 
@@ -39,6 +59,11 @@ FirstName LastName <email@utexas.edu>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+
+This is a multi level index structure. This was selected so that small files (5kb) can be
+handled in one disk access (after the inode has been read) while still allowing for
+larger files to exist.
+
 
                             SUBDIRECTORIES
                             ==============
@@ -49,15 +74,70 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+enum inode_type{FILE=2, DIR=1, DATA=0};
+
+Keeps track of an inode's type while its on disk.
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk
+  {
+    off_t length;                       /* File size in bytes. */
+    uint32_t type;                      
+    unsigned magic;                     /* Magic number. */
+    block_sector_t direct[10];          /* Pointer to get to the next inode */
+    block_sector_t indirect;
+    block_sector_t doubleIndirect;
+    uint32_t unused[113];               /* Not used. */
+  };
+now keeps track of its type while on disk.
+
+struct thread
+  {
+    /* threads current pwd */
+    struct dir* pwd;
+    
+    /* fd table */
+    bool isFdInit;
+    struct FdEntry **fdTable;
+    int fdCount;
+    int fdCap;
+ }
+ keep track of PWD in threads	
+
+
+/* Union to keep track of file descriptors */
+union FdPointer {
+  struct file* asFile;
+  struct dir*  asDir;
+};
+Since Fd now hold both files and dir we save space by using a union for the pointer.
+Also we dont have to cast.
+
+struct FdEntry {
+  union FdPointer ptr;
+  int isFile;
+};
+Since Fd now hold both files and dir we need to keep the pointer AND if its a file or a directory.
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
 
+Paths are traversed by using strtokr. If the path string starts with / or the pwd of the current thread is not set then
+the traversal will begin at the root directory. Then each token is considered. if the token is "." nothing happens. if it is
+".." the current traversal directory is set it its parent. otherwise it looks up the token in the current traversal directory.
+if look up fails then a flag is set. if look up find a file then a different flag is set. those flags are returned to the caller.
+If either flag is set at the start of an iteration then the traversal returns. otherwise it returns the directory pointing to the
+last dir on the path.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+This is stored as a struct Dir* in the thread struct. chdir will change this. children inherit this from the parents.
 
                            SURVEY QUESTIONS
                            ================
@@ -71,14 +151,26 @@ the semester.
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
 
+easy. not too easy but much simpler then VM. It took a long time as its hard to debug the disk since we cannot
+see the state of the disk in gdb.
+
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+
+Yes. This gave me a greater understanding of directories. never knew how they were actually done.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
 
+cant think of anything. 
+
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students in future quarters?
 
+The TAs are great and have been great all semester <3
+
 >> Any other comments?
+
+Thank you for a great semester. This class is up there with comp arch on amount of
+interesting knowledge gained. 
