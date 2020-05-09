@@ -9,7 +9,7 @@
 
 struct bitmap;
 
-enum inode_type{FILE=0, DIR=1};
+enum inode_type{FILE=2, DIR=1, DATA=0};
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */

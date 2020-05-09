@@ -707,8 +707,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   off_t bytes_written = 0;
   uint8_t *bounce = NULL;
   bool changedInode = false;
-
-  lock_acquire(&inode->writeLock);
+  
+  if(inode->data.type == FILE) {
+    lock_acquire(&inode->writeLock);
+  }
   inode->countWriters++;
 
   
@@ -727,6 +729,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     block_sector_t sector_idx = byte_to_sector (inode, offset);
     if(sector_idx == 0xFFFFFFFF || sector_idx == 0) {
       if(!inode_disk_add_sector(inode->sector, &inode->data, offset)) {
+	if(inode->data.type == FILE) {
+	  lock_release(&inode->writeLock);
+	}
 	return 0;
       }
       sector_idx = byte_to_sector (inode, offset);
@@ -780,7 +785,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     block_write (fs_device, inode->sector, &inode->data);
   }
   inode->countWriters--;
-  lock_release(&inode->writeLock);
+  if(inode->data.type == FILE) {
+    lock_release(&inode->writeLock);
+  }
+  
   free (bounce);
   
   return bytes_written;
